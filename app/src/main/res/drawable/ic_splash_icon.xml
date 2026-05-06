@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <!-- Shimmer sensor icon: stylised waveform on sensor body -->
+  <path
+      android:fillColor="#FFFFFF"
+      android:pathData="M54,22 C54,22 30,22 26,26 C22,30 22,78 26,82 C30,86 78,86 82,82 C86,78 86,30 82,26 C78,22 54,22 Z"
+      android:fillAlpha="0.15"/>
+  <path
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="3"
+      android:pathData="M28,54 L36,54 L40,40 L44,68 L50,46 L54,62 L58,50 L62,58 L66,54 L80,54"
+      android:fillColor="#00000000"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"/>
+  <!-- Bluetooth symbol -->
+  <path
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="2.5"
+      android:pathData="M50,72 L58,78 L54,82 L54,66 L58,70 L50,76"
+      android:fillColor="#00000000"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"/>
+</vector>
