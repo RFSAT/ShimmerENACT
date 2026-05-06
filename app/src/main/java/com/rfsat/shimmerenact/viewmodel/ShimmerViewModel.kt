@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager
 import com.rfsat.shimmerenact.data.bluetooth.ShimmerProtocol
 import com.rfsat.shimmerenact.data.models.*
+import com.rfsat.shimmerenact.data.repository.AppLog
 import com.rfsat.shimmerenact.data.repository.PreferencesRepository
 import com.rfsat.shimmerenact.data.repository.RecordingRepository
 import com.rfsat.shimmerenact.data.repository.RecordingFile
@@ -97,6 +98,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     private fun observeConnectionState() {
         viewModelScope.launch {
             btManager.connectionState.collect { state ->
+                AppLog.i("VM", "Connection state → $state")
                 _uiState.update { it.copy(connectionState = state) }
             }
         }
@@ -139,6 +141,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     private fun observeErrors() {
         viewModelScope.launch {
             btManager.errorFlow.collect { msg ->
+                AppLog.e("VM", msg)
                 _uiState.update { it.copy(errorMessage = msg) }
             }
         }
@@ -182,6 +185,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun connectToDevice(address: String) {
+        AppLog.i("VM", "connectToDevice($address) — sensor: ${activeConfig.value.displayName}")
         viewModelScope.launch {
             prefsRepo.saveLastAddress(address)
             btManager.connect(address, activeConfig.value)
@@ -194,14 +198,17 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val config = activeConfig.value
             val signals = signalsForType(config.sensorType)
+            AppLog.i("REC", "Starting recording — ${signals.size} signals, device: ${config.displayName}")
             val result = recordingRepo.startRecording(config.displayName, signals)
             result.onSuccess { path ->
+                AppLog.ok("REC", "Recording started → $path")
                 _recordingState.value = RecordingState(
                     isRecording = true,
                     startTimeMs = System.currentTimeMillis(),
                     filePath = path
                 )
             }.onFailure { e ->
+                AppLog.e("REC", "Recording failed: ${e.message}")
                 _uiState.update { it.copy(errorMessage = "Recording failed: ${e.message}") }
             }
         }
@@ -209,7 +216,12 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
     fun stopRecording() {
         viewModelScope.launch {
-            recordingRepo.stopRecording()
+            val result = recordingRepo.stopRecording()
+            result.onSuccess { (path, count) ->
+                AppLog.ok("REC", "Recording stopped — $count samples saved to ${path.substringAfterLast('/')}")
+            }.onFailure { e ->
+                AppLog.e("REC", "Stop recording error: ${e.message}")
+            }
             _recordingState.value = RecordingState()
             loadRecordings()
         }

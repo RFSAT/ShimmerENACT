@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -57,7 +58,7 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
     // Bottom nav items (only show when appropriate)
     val showBottomNav = currentRoute in listOf(
         Screen.Home.route, Screen.Dashboard.route,
-        Screen.Recordings.route, Screen.Settings.route
+        Screen.Recordings.route, Screen.Log.route, Screen.Settings.route
     )
 
     Scaffold(
@@ -107,6 +108,54 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                         }},
                         icon = { Icon(Icons.Default.TableChart, null) },
                         label = { Text("Files") },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactGreen,
+                            selectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactGreen,
+                            indicatorColor = com.rfsat.shimmerenact.ui.theme.EnactGreen.copy(alpha = 0.15f),
+                            unselectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f),
+                            unselectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f)
+                        )
+                    )
+                    // ── Log tab with error-count badge ──────────────────────
+                    val logEntries by com.rfsat.shimmerenact.data.repository.AppLog.entries.collectAsState()
+                    val errorCount = remember(logEntries) { logEntries.count { it.level == com.rfsat.shimmerenact.data.repository.LogLevel.ERROR } }
+                    NavigationBarItem(
+                        selected = currentRoute == Screen.Log.route,
+                        onClick = { navController.navigate(Screen.Log.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true; restoreState = true
+                        }},
+                        icon = {
+                            androidx.compose.ui.layout.Layout(
+                                content = {
+                                    Icon(Icons.Default.Terminal, null)
+                                    if (errorCount > 0) {
+                                        androidx.compose.foundation.layout.Box(
+                                            modifier = androidx.compose.ui.Modifier
+                                                .size(16.dp)
+                                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                                .background(com.rfsat.shimmerenact.ui.theme.EnactError),
+                                            contentAlignment = androidx.compose.ui.Alignment.Center
+                                        ) {
+                                            Text(
+                                                if (errorCount > 9) "9+" else errorCount.toString(),
+                                                fontSize = 8.sp,
+                                                color = androidx.compose.ui.graphics.Color.White,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            ) { measurables, constraints ->
+                                val icon = measurables[0].measure(constraints)
+                                val badge = if (measurables.size > 1) measurables[1].measure(constraints) else null
+                                layout(icon.width, icon.height) {
+                                    icon.placeRelative(0, 0)
+                                    badge?.placeRelative(icon.width - badge.width + 4, -4)
+                                }
+                            }
+                        },
+                        label = { Text("Log") },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactGreen,
                             selectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactGreen,
@@ -174,6 +223,9 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() }
                 )
+            }
+            composable(Screen.Log.route) {
+                LogScreen(onBack = { navController.popBackStack() })
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(
