@@ -8,6 +8,7 @@ import com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager
 import com.rfsat.shimmerenact.data.bluetooth.ShimmerProtocol
 import com.rfsat.shimmerenact.data.models.*
 import com.rfsat.shimmerenact.data.repository.AppLog
+import com.rfsat.shimmerenact.data.repository.RecordingFile
 import com.rfsat.shimmerenact.data.repository.PreferencesRepository
 import com.rfsat.shimmerenact.data.repository.RecordingRepository
 import com.rfsat.shimmerenact.data.repository.RecordingFile
@@ -27,6 +28,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         SensorConfig(
             sensorType = SensorType.GSR_PLUS,
             btRadioId = SensorType.GSR_PLUS.defaultBtSuffix,
+            hardwareRateHz = DEFAULT_RATE_HZ,
             enabledSignals = GSR_SIGNALS.map { it.key }.toSet()
         )
     )
@@ -34,6 +36,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         SensorConfig(
             sensorType = SensorType.EXG,
             btRadioId = SensorType.EXG.defaultBtSuffix,
+            hardwareRateHz = DEFAULT_RATE_HZ,
             enabledSignals = EXG_SIGNALS.map { it.key }.toSet()
         )
     )
@@ -41,6 +44,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         SensorConfig(
             sensorType = SensorType.CUSTOM,
             btRadioId = "",
+            hardwareRateHz = DEFAULT_RATE_HZ,
             enabledSignals = CUSTOM_SIGNALS.map { it.key }.toSet(),
             customName = "Custom Sensor"
         )
@@ -176,6 +180,40 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                 SensorType.EXG      -> { _exgConfig.update { it.copy(btRadioId = id) }; prefsRepo.saveExgBtId(id) }
                 SensorType.CUSTOM   -> { _customConfig.update { it.copy(btRadioId = id) }; prefsRepo.saveCustomBtId(id) }
             }
+        }
+    }
+
+    /** Update the global hardware sampling rate for a sensor type (1–6000 Hz). */
+    fun updateHardwareRate(type: SensorType, hz: Int) {
+        val clamped = hz.coerceIn(1, 6000)
+        AppLog.i("VM", "Hardware rate → $clamped Hz [${type.name}]")
+        when (type) {
+            SensorType.GSR_PLUS -> _gsrConfig.update { it.withHardwareRate(clamped) }
+            SensorType.EXG      -> _exgConfig.update { it.withHardwareRate(clamped) }
+            SensorType.CUSTOM   -> _customConfig.update { it.withHardwareRate(clamped) }
+        }
+    }
+
+    /** Update the per-signal effective (decimated) rate for the active sensor. */
+    fun updateSignalRate(signalKey: String, hz: Int) {
+        val type = _activeSensorType.value
+        val signals = signalsForType(type)
+        val constraints = signals.find { it.key == signalKey }?.rateConstraints ?: RATE_GENERIC
+        AppLog.i("VM", "Signal rate $signalKey → $hz Hz [${type.name}]")
+        when (type) {
+            SensorType.GSR_PLUS -> _gsrConfig.update { it.withSignalRate(signalKey, hz, constraints) }
+            SensorType.EXG      -> _exgConfig.update { it.withSignalRate(signalKey, hz, constraints) }
+            SensorType.CUSTOM   -> _customConfig.update { it.withSignalRate(signalKey, hz, constraints) }
+        }
+    }
+
+    /** Reset all per-signal rates to the hardware rate (remove decimation). */
+    fun resetAllSignalRates(type: SensorType) {
+        AppLog.i("VM", "Resetting all signal rates to hardware rate [${type.name}]")
+        when (type) {
+            SensorType.GSR_PLUS -> _gsrConfig.update { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.EXG      -> _exgConfig.update { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.CUSTOM   -> _customConfig.update { it.copy(signalRatesHz = emptyMap()) }
         }
     }
 

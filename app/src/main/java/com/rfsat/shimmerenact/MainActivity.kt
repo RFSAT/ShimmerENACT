@@ -219,6 +219,13 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onSamplingRate = { navController.navigate(Screen.SamplingRate.route) }
+                )
+            }
+            composable(Screen.SamplingRate.route) {
+                SamplingRateScreen(
+                    viewModel = viewModel,
                     onBack = { navController.popBackStack() }
                 )
             }

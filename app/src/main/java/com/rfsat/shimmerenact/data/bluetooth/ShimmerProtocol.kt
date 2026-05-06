@@ -46,17 +46,39 @@ object ShimmerProtocol {
     const val SENSOR_EXG1_16BIT: Int          = 0x0010    // byte 2 bit 4
     const val SENSOR_EXG2_16BIT: Int          = 0x0008    // byte 2 bit 3
 
-    // Sampling rate codes (256/N)
+    // Shimmer3 sampling rate register = 32768 / desiredHz  (16-bit, little-endian)
+    // Valid hardware range: 1 Hz – 6000 Hz
+    fun rateToRegister(hz: Int): Int {
+        val clamped = hz.coerceIn(1, 6000)
+        return (32768 / clamped).coerceIn(1, 32767)
+    }
+
+    // Legacy named rates kept for reference
     val SAMPLING_RATES = mapOf(
-        1    to 0xFF00,
-        10   to 0x1980,
-        51   to 0x0500,
-        102  to 0x0280,
-        204  to 0x0140,
-        256  to 0x0100,
-        512  to 0x0080,
-        1024 to 0x0040
+        1    to rateToRegister(1),
+        10   to rateToRegister(10),
+        51   to rateToRegister(51),
+        102  to rateToRegister(102),
+        204  to rateToRegister(204),
+        250  to rateToRegister(250),
+        256  to rateToRegister(256),
+        512  to rateToRegister(512),
+        1000 to rateToRegister(1000),
+        1024 to rateToRegister(1024),
+        2000 to rateToRegister(2000),
+        4000 to rateToRegister(4000),
+        6000 to rateToRegister(6000)
     )
+
+    // Build the 3-byte SET_SAMPLING_RATE command payload for a given Hz
+    fun buildRateCommand(hz: Int): ByteArray {
+        val reg = rateToRegister(hz)
+        return byteArrayOf(
+            CMD_SET_SAMPLING_RATE,
+            (reg and 0xFF).toByte(),          // low byte
+            ((reg shr 8) and 0xFF).toByte()   // high byte
+        )
+    }
 
     // RFCOMM/SPP UUID for Bluetooth Serial Port Profile
     const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"

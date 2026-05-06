@@ -21,7 +21,8 @@ import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
 @Composable
 fun SettingsScreen(
     viewModel: ShimmerViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSamplingRate: () -> Unit = {}
 ) {
     val activeConfig by viewModel.activeConfig.collectAsState()
 
@@ -106,6 +107,37 @@ fun SettingsScreen(
                     hint = "e.g. Environmental Node 1",
                     onSave = { viewModel.updateCustomName(customName) }
                 )
+            }
+
+            // Sampling rate card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSamplingRate),
+                colors = CardDefaults.cardColors(
+                    containerColor = EnactGreen.copy(alpha = 0.08f)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, EnactGreen.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Speed, null, tint = EnactGreen,
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sampling Rates", fontWeight = FontWeight.SemiBold,
+                            color = EnactOnSurface, fontSize = 14.sp)
+                        Text(
+                            "Hardware: ${activeConfig.hardwareRateHz} Hz  •  Per-signal decimation",
+                            fontSize = 12.sp, color = EnactOnSurface.copy(alpha = 0.5f)
+                        )
+                    }
+                    Icon(Icons.Default.ChevronRight, null,
+                        tint = EnactGreen.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+                }
             }
 
             // Info about storage

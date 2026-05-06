@@ -122,6 +122,18 @@ class ShimmerBluetoothManager(private val context: Context) {
                 AppLog.i("BT", "Sending INQUIRY (0x${"%02X".format(ShimmerProtocol.CMD_INQUIRY.toInt() and 0xFF)})…")
                 runInquiry(config)
 
+                // ── Set hardware sampling rate ────────────────────────────────
+                AppLog.i("BT", "Setting hardware rate: ${config.hardwareRateHz} Hz…")
+                val rateCmd = ShimmerProtocol.buildRateCommand(config.hardwareRateHz)
+                sendCommand(rateCmd)
+                // Wait for ACK
+                val rateAck = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
+                if (rateAck != null && rateAck.isNotEmpty() && rateAck[0] == ShimmerProtocol.ACK) {
+                    AppLog.ok("BT", "Rate ACK received — hardware running at ${config.hardwareRateHz} Hz")
+                } else {
+                    AppLog.w("BT", "No ACK for rate command (${rateAck?.size ?: 0}B) — continuing anyway")
+                }
+
                 AppLog.i("BT", "Sending START_STREAMING (0x${"%02X".format(ShimmerProtocol.CMD_START_STREAMING.toInt() and 0xFF)})…")
                 sendCommand(byteArrayOf(ShimmerProtocol.CMD_START_STREAMING))
                 AppLog.ok("BT", "Streaming command sent — waiting for data packets…")
@@ -203,6 +215,24 @@ class ShimmerBluetoothManager(private val context: Context) {
         meterWindowStart = System.currentTimeMillis(); meterCount = 0; lastSpsLog = System.currentTimeMillis()
         var totalPackets = 0L; var badBytes = 0
 
+        // ── Software decimation state ─────────────────────────────────────────
+        // For each signal key, track how many hardware samples we've seen since
+        // the last emitted sample.  Emit when counter ≥ (hardwareRate / signalRate).
+        val signals = signalsForType(config.sensorType)
+        val decimationStep: Map<String, Int> = signals.associate { sig ->
+            val sigRate = config.effectiveRateHz(sig.key, sig.rateConstraints)
+            val step = (config.hardwareRateHz.toDouble() / sigRate).coerceAtLeast(1.0)
+                .toInt().coerceAtLeast(1)
+            sig.key to step
+        }
+        val decimationCounter: MutableMap<String, Int> = signals.associate { it.key to 0 }
+            .toMutableMap()
+
+        AppLog.d("BT", "Decimation steps: " + decimationStep.entries
+            .filter { it.value > 1 }
+            .joinToString { "${it.key}÷${it.value}" }
+            .ifEmpty { "none (all at hardware rate)" })
+
         streamJob = scope.launch {
             val inStream = inputStream ?: run { AppLog.e("BT", "InputStream null — aborting stream loop"); return@launch }
             var consecutiveErrors = 0
@@ -228,14 +258,26 @@ class ShimmerBluetoothManager(private val context: Context) {
                     }
                     if (bytesRead < 3) { AppLog.w("BT", "Packet too short: ${bytesRead}B"); continue }
 
-                    val values = ShimmerPacketParser.parse(packetBuf.copyOf(bytesRead), sensorBitmap, calParams)
-                    if (values.isEmpty()) continue
+                    val rawValues = ShimmerPacketParser.parse(packetBuf.copyOf(bytesRead), sensorBitmap, calParams)
+                    if (rawValues.isEmpty()) continue
 
                     totalPackets++; meterCount++; consecutiveErrors = 0
 
+                    // ── Apply per-signal decimation ───────────────────────────
+                    val decimatedValues = mutableMapOf<String, Double>()
+                    for ((key, value) in rawValues) {
+                        val step = decimationStep[key] ?: 1
+                        val count = (decimationCounter[key] ?: 0) + 1
+                        decimationCounter[key] = count
+                        if (count >= step) {
+                            decimatedValues[key] = value
+                            decimationCounter[key] = 0
+                        }
+                    }
+
                     if (totalPackets == 1L) {
-                        AppLog.ok("BT", "FIRST DATA PACKET — keys: ${values.keys.joinToString()}")
-                        AppLog.d("BT", values.entries.take(5).joinToString { "${it.key}=${"%.3f".format(it.value)}" })
+                        AppLog.ok("BT", "FIRST DATA PACKET — keys: ${rawValues.keys.joinToString()}")
+                        AppLog.d("BT", rawValues.entries.take(5).joinToString { "${it.key}=${"%.3f".format(it.value)}" })
                     }
 
                     val now = System.currentTimeMillis()
@@ -245,7 +287,13 @@ class ShimmerBluetoothManager(private val context: Context) {
                         meterCount = 0; meterWindowStart = now; lastSpsLog = now
                     }
 
-                    _sampleFlow.emit(ShimmerSample(timestampMs = System.currentTimeMillis(), values = values))
+                    // Emit full hardware-rate sample (decimated keys excluded this tick)
+                    if (decimatedValues.isNotEmpty() || rawValues.isNotEmpty()) {
+                        _sampleFlow.emit(ShimmerSample(
+                            timestampMs = System.currentTimeMillis(),
+                            values = rawValues   // always emit full for display; decimation affects CSV
+                        ))
+                    }
 
                 } catch (e: IOException) {
                     consecutiveErrors++
