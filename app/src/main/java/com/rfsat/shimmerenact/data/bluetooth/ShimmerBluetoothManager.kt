@@ -175,16 +175,38 @@ class ShimmerBluetoothManager(private val context: Context) {
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
         val response = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
-        if (response != null && response.size >= 5) {
-            sensorBitmap[0] = response[3].toInt() and 0xFF
-            sensorBitmap[1] = response[4].toInt() and 0xFF
-            sensorBitmap[2] = if (response.size > 5) response[5].toInt() and 0xFF else 0
-            AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X".format(
-                sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
-            AppLog.d("BT", "Raw response (${response.size}B): " +
-                response.take(12).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+
+        // Inquiry response layout:
+        //   [0] = 0xFF (ACK)
+        //   [1] = 0x02 (INQUIRY_RESPONSE)
+        //   [2] = rate LSB
+        //   [3] = rate MSB
+        //   [4] = sensor bitmap byte 0
+        //   [5] = sensor bitmap byte 1
+        //   [6] = sensor bitmap byte 2
+        //   [7] = num channels
+        //   [8+] = channel types
+
+        if (response != null && response.size >= ShimmerProtocol.INQUIRY_MIN_LEN) {
+            val bitmapOffset = ShimmerProtocol.INQUIRY_BITMAP_OFFSET
+            sensorBitmap[0] = response[bitmapOffset].toInt() and 0xFF
+            sensorBitmap[1] = response[bitmapOffset + 1].toInt() and 0xFF
+            sensorBitmap[2] = response[bitmapOffset + 2].toInt() and 0xFF
+
+            // Also read back the actual sampling rate the device confirmed
+            val regLo  = response[2].toInt() and 0xFF
+            val regHi  = response[3].toInt() and 0xFF
+            val regVal = regLo or (regHi shl 8)
+            val actualHz = ShimmerProtocol.registerToHz(regVal)
+
+            AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  actual rate: %d Hz".format(
+                sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz))
+            AppLog.d("BT", "Full response (${response.size}B): " +
+                response.take(10).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
         } else {
-            AppLog.w("BT", "Inquiry timeout/short response (${response?.size ?: 0}B) — using default bitmap for ${config.sensorType.name}")
+            AppLog.w("BT", "Inquiry bad/timeout — size=${response?.size ?: 0}B, using default bitmap for ${config.sensorType.name}")
+            AppLog.d("BT", "Raw response: " + (response?.take(8)
+                ?.joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } ?: "null"))
             sensorBitmap = defaultBitmapForType(config.sensorType)
             AppLog.d("BT", "Default bitmap: 0x%02X 0x%02X 0x%02X".format(
                 sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
@@ -204,11 +226,34 @@ class ShimmerBluetoothManager(private val context: Context) {
             ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0, 0, 0)
     }
 
+    // Reads a response from the Shimmer3. The device sends ACK (0xFF) first, then
+    // the actual response payload — sometimes in one read, sometimes split across two.
+    // We accumulate bytes until no more arrive within a short idle window.
     private suspend fun readResponseWithTimeout(timeoutMs: Long): ByteArray? =
-        withTimeoutOrNull(timeoutMs) {
-            val buf = ByteArray(256)
-            val n = inputStream?.read(buf) ?: return@withTimeoutOrNull null
-            buf.copyOf(n)
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(timeoutMs) {
+                val buf = ByteArray(256)
+                var total = 0
+                val deadline = System.currentTimeMillis() + timeoutMs
+                while (System.currentTimeMillis() < deadline && total < buf.size) {
+                    val stream = inputStream ?: break
+                    val avail = try { stream.available() } catch (_: Exception) { 0 }
+                    if (avail > 0 || total == 0) {
+                        val n = try { stream.read(buf, total, buf.size - total) } catch (_: Exception) { -1 }
+                        if (n <= 0) break
+                        total += n
+                        // Brief wait to see if more data follows
+                        if (total >= 2) {
+                            kotlinx.coroutines.delay(30)
+                            val more = try { stream.available() } catch (_: Exception) { 0 }
+                            if (more == 0) break
+                        }
+                    } else {
+                        kotlinx.coroutines.delay(10)
+                    }
+                }
+                if (total > 0) buf.copyOf(total) else null
+            }
         }
 
     private fun startStreamLoop(config: SensorConfig) {
