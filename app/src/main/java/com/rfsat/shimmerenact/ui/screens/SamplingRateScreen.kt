@@ -304,7 +304,7 @@ fun SignalGroupCard(
 
             AnimatedVisibility(visible = expanded) {
                 Column {
-                    HorizontalDivider(color = EnactSurfaceVar)
+                    Divider(color = EnactSurfaceVar)
                     signals.forEach { signal ->
                         SignalRateRow(
                             signal = signal,
@@ -313,7 +313,7 @@ fun SignalGroupCard(
                             onRateChange = { hz -> onSignalRateChange(signal.key, hz) }
                         )
                         if (signal != signals.last()) {
-                            HorizontalDivider(
+                            Divider(
                                 color = EnactSurfaceVar.copy(alpha = 0.4f),
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )
