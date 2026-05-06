@@ -68,9 +68,7 @@ jobs:
       #   2. Base64 encode it:    base64 -i release.jks | pbcopy
       #   3. Add GitHub secrets:  KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
       - name: Sign release APK
-        if: |
-          github.event_name != 'pull_request' &&
-          secrets.KEYSTORE_BASE64 != ''
+        if: github.event_name != 'pull_request' && env.KEYSTORE_BASE64 != ''
         uses: r0adkll/sign-android-release@v1
         with:
           releaseDirectory: app/build/outputs/apk/release
@@ -79,6 +77,7 @@ jobs:
           keyStorePassword: ${{ secrets.STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
         env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           BUILD_TOOLS_VERSION: "34.0.0"
 
       # ── Upload debug APK artifact ─────────────────────────────────────────────
