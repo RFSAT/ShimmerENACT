@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ShimmerENACT</string>
+    <string name="app_author">RFSAT Limited</string>
+    <string name="enact_grant">Horizon Europe Grant 101157151</string>
+</resources>
