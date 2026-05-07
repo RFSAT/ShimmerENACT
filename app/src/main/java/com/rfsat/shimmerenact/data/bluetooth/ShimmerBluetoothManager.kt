@@ -179,44 +179,41 @@ class ShimmerBluetoothManager(private val context: Context) {
 
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
-
-        // The Shimmer3 sends 0xFF ACK immediately, then the inquiry response body.
-        // Read the ACK first so readResponseWithTimeout gets a clean response start.
-        readAckWithTimeout(1000L)
-
         val response = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
+
+        // The Shimmer3 may send: [0xFF ACK][0x02 code][rate×2][bitmap×3][nch][codes...]
+        // or just:               [0x02 code][rate×2][bitmap×3][nch][codes...]
+        // Detect which case by checking the first byte and adjust offset accordingly.
+        val bodyStart = if (response != null && response.isNotEmpty() &&
+            response[0].toInt() and 0xFF == 0xFF) 1 else 0
 
         // Inquiry response layout:
         //   [0] = 0xFF (ACK)
-        //   [0] = 0x02 (INQUIRY_RESPONSE) — ACK already consumed
-        //   [1] = rate LSB
-        //   [2] = rate MSB
-        //   [3] = sensor bitmap byte 0
-        //   [6] = num channels
-        //   [7+] = channel types
+        // Body layout (from bodyStart): [0x02][rate_lo][rate_hi][bm0][bm1][bm2][nch][codes...]
+        val minBodyLen = 7   // response-code(1) + rate(2) + bitmap(3) + nch(1)
 
-        if (response != null && response.size >= ShimmerProtocol.INQUIRY_MIN_LEN) {
-            val bitmapOffset = ShimmerProtocol.INQUIRY_BITMAP_OFFSET
-            sensorBitmap[0] = response[bitmapOffset].toInt() and 0xFF
-            sensorBitmap[1] = response[bitmapOffset + 1].toInt() and 0xFF
-            sensorBitmap[2] = response[bitmapOffset + 2].toInt() and 0xFF
+        if (response != null && response.size >= bodyStart + minBodyLen) {
+            val b = bodyStart  // short alias
+            sensorBitmap[0] = response[b + 3].toInt() and 0xFF
+            sensorBitmap[1] = response[b + 4].toInt() and 0xFF
+            sensorBitmap[2] = response[b + 5].toInt() and 0xFF
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
 
-            val regLo  = response[1].toInt() and 0xFF
-            val regHi  = response[2].toInt() and 0xFF
-            val regVal = regLo or (regHi shl 8)
+            val regLo   = response[b + 1].toInt() and 0xFF
+            val regHi   = response[b + 2].toInt() and 0xFF
+            val regVal  = regLo or (regHi shl 8)
             val actualHz = ShimmerProtocol.registerToHz(regVal)
 
-            // Parse channel list
-            val numChannels = if (response.size > ShimmerProtocol.INQUIRY_CHANNELS_OFFSET)
-                response[ShimmerProtocol.INQUIRY_CHANNELS_OFFSET].toInt() and 0xFF else 0
-            channelList = if (numChannels > 0 && response.size >= ShimmerProtocol.INQUIRY_CHANNELS_OFFSET + 1 + numChannels) {
+            val numChannels = response[b + 6].toInt() and 0xFF
+            val codesStart  = b + 7
+            channelList = if (numChannels > 0 && response.size >= codesStart + numChannels) {
                 (0 until numChannels).map {
-                    response[ShimmerProtocol.INQUIRY_CHANNELS_OFFSET + 1 + it].toInt() and 0xFF
+                    response[codesStart + it].toInt() and 0xFF
                 }
             } else emptyList()
 
-            AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): %s".format(
+            AppLog.ok("BT", "Inquiry OK (bodyStart=$bodyStart) — " +
+                "bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): %s".format(
                 sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz, numChannels,
                 channelList.joinToString { "0x%02X".format(it) }))
             AppLog.i("BT", "Full response (${response.size}B): " +
@@ -261,9 +258,9 @@ class ShimmerBluetoothManager(private val context: Context) {
             } ?: false
         }
 
-    // ── Read a Shimmer3 inquiry response robustly ─────────────────────────────
-    // The inquiry response has a variable length (header + channel codes).
-    // We read the 8-byte header first, then read exactly numChannels more bytes.
+    // ── Read Shimmer3 inquiry response — ACK may or may not be prepended ─────
+    // Reads until we have the full response including all channel codes.
+    // Handles both [0xFF][0x02][...] and [0x02][...] formats.
     private suspend fun readResponseWithTimeout(timeoutMs: Long): ByteArray? =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
@@ -271,19 +268,27 @@ class ShimmerBluetoothManager(private val context: Context) {
                 val buf = ByteArray(256)
                 var total = 0
 
-                // Phase 1: read until we have the minimum header (8 bytes)
-                while (total < ShimmerProtocol.INQUIRY_MIN_LEN) {
+                // Read at least 8 bytes (covers ACK + 7 body bytes, or just 7 body bytes + 1 spare)
+                val minRead = 8
+                while (total < minRead) {
                     val n = try {
-                        stream.read(buf, total, ShimmerProtocol.INQUIRY_MIN_LEN - total)
+                        stream.read(buf, total, minRead - total)
                     } catch (_: Exception) { return@withTimeoutOrNull null }
                     if (n <= 0) return@withTimeoutOrNull null
                     total += n
                 }
 
-                // Phase 2: read the channel codes we now know exist
-                val numChannels = buf[ShimmerProtocol.INQUIRY_CHANNELS_OFFSET].toInt() and 0xFF
-                val targetTotal = ShimmerProtocol.INQUIRY_CHANNELS_OFFSET + 1 + numChannels
+                // Determine if ACK is present and find body start
+                val bodyStart = if (buf[0].toInt() and 0xFF == 0xFF) 1 else 0
 
+                // Channel count is at bodyStart+6
+                val nchOffset = bodyStart + 6
+                if (total <= nchOffset) return@withTimeoutOrNull buf.copyOf(total)
+
+                val numChannels = buf[nchOffset].toInt() and 0xFF
+                val targetTotal = nchOffset + 1 + numChannels
+
+                // Read remaining channel codes
                 while (total < targetTotal && total < buf.size) {
                     val n = try {
                         stream.read(buf, total, targetTotal - total)

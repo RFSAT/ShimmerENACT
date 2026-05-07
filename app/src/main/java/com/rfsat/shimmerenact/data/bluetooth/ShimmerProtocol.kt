@@ -36,24 +36,18 @@ object ShimmerProtocol {
     const val SENSOR_EXG1_16BIT:    Int = SENSOR_b2_EXG1_16BIT
     const val SENSOR_EXG2_16BIT:    Int = SENSOR_b2_EXG2_16BIT
 
-    // ─── Inquiry response layout ───────────────────────────────────────────────
-    // The 0xFF ACK is consumed separately by readAckWithTimeout() before this.
-    // The remaining bytes are:
-    // [0]  0x02  INQUIRY_RESPONSE code
-    // [1]  rate LSB
-    // [2]  rate MSB
-    // [3]  sensor bitmap byte 0
-    // [4]  sensor bitmap byte 1
-    // [5]  sensor bitmap byte 2
-    // [6]  number of data channels (n)
-    // [7 … 7+n-1]  channel type codes (one byte each)
-    const val INQUIRY_BITMAP_OFFSET:   Int = 3   // byte index of bitmap[0] after ACK stripped
-    const val INQUIRY_CHANNELS_OFFSET: Int = 6   // byte index of channel count after ACK stripped
-    const val INQUIRY_MIN_LEN:         Int = 7   // minimum bytes needed (up to channel count)
+    // ─── Inquiry response layout (parsed dynamically in runInquiry) ──────────
+    // May arrive as: [0xFF ACK][0x02 code][rate×2][bitmap×3][nch][codes...]
+    // or without ACK: [0x02 code][rate×2][bitmap×3][nch][codes...]
+    // bodyStart is detected by checking if response[0] == 0xFF
+    // These constants are kept for reference only:
+    const val INQUIRY_BITMAP_OFFSET:   Int = 3   // from body start (after 0x02 + rate×2)
+    const val INQUIRY_CHANNELS_OFFSET: Int = 6   // from body start
+    const val INQUIRY_MIN_LEN:         Int = 7   // minimum body bytes
 
     // ─── Channel type codes — Shimmer3 BT protocol (verified against SDK source) ──
     // Ref: ShimmerAndroidInstrumentDriver / DataObject.java / shimmer3 firmware
-    const val CH_TIMESTAMP:      Int = 0x01  // 3 bytes, always first
+    const val CH_TIMESTAMP:      Int = 0x00  // 3 bytes — the device sends 0x00 for timestamp
     // ADXL345 low-noise accelerometer (LN)
     const val CH_ACCEL_X:        Int = 0x02  // 2 bytes each
     const val CH_ACCEL_Y:        Int = 0x03
