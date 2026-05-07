@@ -133,7 +133,7 @@ fun SettingsScreen(
                             color = EnactOnSurface, fontSize = 14.sp)
                         Text(
                             "Hardware: ${activeConfig.hardwareRateHz} Hz  •  Per-signal decimation",
-                            fontSize = 12.sp, color = EnactOnSurface.copy(alpha = 0.5f)
+                            fontSize = 12.sp, color = EnactOnSurfaceDim
                         )
                     }
                     Icon(Icons.Default.ChevronRight, null,
@@ -158,7 +158,7 @@ fun SettingsScreen(
                             "CSV files are saved to:\nAndroid/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/\n\n" +
                             "Access via Files app, Android/data, or share directly from the Recordings screen.",
                             fontSize = 12.sp,
-                            color = EnactOnSurface.copy(alpha = 0.55f),
+                            color = EnactOnSurfaceDim,
                             lineHeight = 17.sp
                         )
                     }

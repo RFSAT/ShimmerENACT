@@ -70,8 +70,36 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     )
     val uiState: StateFlow<SensorUiState> = _uiState.asStateFlow()
 
-    // ─── Paired / discovered devices ─────────────────────────────────────────
-    val pairedDevices: StateFlow<List<BtDeviceInfo>> = flow {
+    // ─── Signals supported by the connected device (from inquiry) ────────────
+    // Derived from the sensorBitmapFlow; the BT manager updates this after inquiry.
+    // Empty set = not yet connected (treat as "all supported" in the UI).
+    val supportedSignalKeys: StateFlow<Set<String>> =
+        btManager.sensorBitmapFlow.map { bitmap ->
+            if (bitmap.all { it == 0 }) return@map emptySet()
+            val b0 = bitmap[0]; val b1 = bitmap[1]; val b2 = bitmap[2]
+            val keys = mutableSetOf<String>()
+            if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0 ||
+                b1 and ShimmerProtocol.SENSOR_b1_D_ACCEL != 0)
+                keys += listOf("accel_x", "accel_y", "accel_z")
+            if (b0 and ShimmerProtocol.SENSOR_GYRO != 0)
+                keys += listOf("gyro_x", "gyro_y", "gyro_z")
+            if (b0 and ShimmerProtocol.SENSOR_MAG != 0)
+                keys += listOf("mag_x", "mag_y", "mag_z")
+            if (b0 and ShimmerProtocol.SENSOR_EXG1_24BIT != 0 ||
+                b2 and ShimmerProtocol.SENSOR_EXG1_16BIT != 0)
+                keys += listOf("exg1_ch1", "exg1_ch2")
+            if (b0 and ShimmerProtocol.SENSOR_EXG2_24BIT != 0 ||
+                b2 and ShimmerProtocol.SENSOR_EXG2_16BIT != 0)
+                keys += listOf("exg2_ch1", "exg2_ch2")
+            if (b0 and ShimmerProtocol.SENSOR_GSR           != 0) keys += "gsr_kohm"
+            if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0  != 0) keys += "ppg_mv"
+            if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A7  != 0) keys += "ch_a7"
+            if (b1 and ShimmerProtocol.SENSOR_b1_VBATT      != 0) keys += "batt_mv"
+            // Intersect with signals defined for this sensor type so we never
+            // show an "available" badge for a channel the app doesn't model
+            val defined = signalsForType(_activeSensorType.value).map { it.key }.toSet()
+            keys.intersect(defined)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
         emit(btManager.getPairedDevices())
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 

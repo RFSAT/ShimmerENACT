@@ -207,7 +207,7 @@ fun ConnectScreen(
 
                 if (pairedDevices.isEmpty()) {
                     Text("No paired devices found. Pair your Shimmer3 in Android Settings → Bluetooth first.",
-                        fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+                        fontSize = 13.sp, color = EnactOnSurfaceDim)
                 } else {
                     pairedDevices.forEach { device ->
                         val isShimmer = device.name.contains("Shimmer", ignoreCase = true)
@@ -324,13 +324,13 @@ fun DeviceRow(
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Default.Bluetooth, null,
-                tint = if (isRecommended) EnactGreen else EnactOnSurface.copy(alpha = 0.5f),
+                tint = if (isRecommended) EnactGreen else EnactOnSurfaceDim,
                 modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(device.name, fontWeight = FontWeight.Medium, color = EnactOnSurface, fontSize = 14.sp)
-            Text(device.address, fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+            Text(device.address, fontSize = 11.sp, color = EnactOnSurfaceDim)
         }
         if (isRecommended) {
             Text("SHIMMER",

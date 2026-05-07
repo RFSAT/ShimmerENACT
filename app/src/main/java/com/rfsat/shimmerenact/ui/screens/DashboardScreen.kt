@@ -81,7 +81,7 @@ fun DashboardScreen(
                             Text(
                                 "${uiState.connectionState.name} • ${"%.1f".format(uiState.samplesPerSecond)} Hz",
                                 fontSize = 11.sp,
-                                color = EnactOnSurface.copy(alpha = 0.55f)
+                                color = EnactOnSurfaceDim
                             )
                         }
                     }
@@ -149,6 +149,7 @@ fun DashboardScreen(
         SignalSelectorSheet(
             signals = signals,
             selected = selectedChartSignals,
+            supportedKeys = supportedKeys,
             onDismiss = { showSignalSelector = false },
             onConfirm = { selectedChartSignals = it; showSignalSelector = false }
         )
@@ -197,7 +198,7 @@ fun LiveChartCard(
                             setDrawGridLines(true)
                             gridColor = EnactSurfaceVar.copy(alpha = 0.4f).toArgb()
                             axisLineColor = EnactSurfaceVar.toArgb()
-                            textColor = EnactOnSurface.copy(alpha = 0.45f).toArgb()
+                            textColor = EnactOnSurfaceDim.toArgb()
                             textSize = 8f
                             labelCount = 5
                             // X values are seconds; format as "Xs"
@@ -208,7 +209,7 @@ fun LiveChartCard(
                             position = com.github.mikephil.charting.components.XAxis.XAxisPosition.BOTTOM
                         }
                         axisLeft.apply {
-                            textColor = EnactOnSurface.copy(alpha = 0.5f).toArgb()
+                            textColor = EnactOnSurfaceDim.toArgb()
                             gridColor = EnactSurfaceVar.copy(alpha = 0.5f).toArgb()
                             axisLineColor = EnactSurfaceVar.toArgb()
                             textSize = 8f
@@ -306,7 +307,7 @@ fun SignalGaugeCard(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(signal.displayName, fontSize = 11.sp,
-                    color = EnactOnSurface.copy(alpha = 0.6f),
+                    color = EnactOnSurfaceDim,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
@@ -318,7 +319,7 @@ fun SignalGaugeCard(
                     )
                     Spacer(Modifier.width(3.dp))
                     Text(signal.unit, fontSize = 10.sp,
-                        color = EnactOnSurface.copy(alpha = 0.45f),
+                        color = EnactOnSurfaceDim,
                         modifier = Modifier.padding(bottom = 2.dp))
                 }
             }
@@ -356,7 +357,7 @@ fun RecordingBar(
                     Text(
                         "${recordingState.fileCount} file${if (recordingState.fileCount != 1) "s" else ""}  •  " +
                         "${recordingState.rowsWritten} rows written",
-                        color = EnactOnSurface.copy(alpha = 0.55f), fontSize = 11.sp
+                        color = EnactOnSurfaceDim, fontSize = 11.sp
                     )
                 }
                 Button(
@@ -373,7 +374,7 @@ fun RecordingBar(
                 Icon(Icons.Default.FiberManualRecord, null,
                     tint = EnactOnSurface.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Not recording", color = EnactOnSurface.copy(alpha = 0.5f),
+                Text("Not recording", color = EnactOnSurfaceDim,
                     modifier = Modifier.weight(1f), fontSize = 13.sp)
                 Button(
                     onClick = onStart,
@@ -398,6 +399,7 @@ fun RecordingBar(
 fun SignalSelectorSheet(
     signals: List<ShimmerSignal>,
     selected: Set<String>,
+    supportedKeys: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit
 ) {
@@ -411,15 +413,16 @@ fun SignalSelectorSheet(
             Text("Select chart signals", fontWeight = FontWeight.Bold,
                 color = EnactOnSurface, fontSize = 16.sp)
             Text("Maximum 6 for readability", fontSize = 12.sp,
-                color = EnactOnSurface.copy(alpha = 0.5f))
+                color = EnactOnSurfaceDim)
             Spacer(Modifier.height(12.dp))
             signals.forEach { sig ->
                 val isOn = sig.key in localSelected
                 val accentColor = Color(sig.color)
+                val supported = supportedKeys.isEmpty() || sig.key in supportedKeys
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
+                        .clickable(enabled = supported) {
                             localSelected = if (isOn) localSelected - sig.key
                             else if (localSelected.size < 6) localSelected + sig.key
                             else localSelected
@@ -428,19 +431,30 @@ fun SignalSelectorSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Checkbox(
-                        checked = isOn,
+                        checked = isOn && supported,
                         onCheckedChange = null,
+                        enabled = supported,
                         colors = CheckboxDefaults.colors(
                             checkedColor = accentColor,
-                            uncheckedColor = EnactOnSurface.copy(alpha = 0.4f)
+                            uncheckedColor = EnactOnSurface.copy(alpha = 0.4f),
+                            disabledCheckedColor = EnactOnSurface.copy(alpha = 0.2f),
+                            disabledUncheckedColor = EnactOnSurface.copy(alpha = 0.15f)
                         )
                     )
                     Spacer(Modifier.width(10.dp))
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(accentColor))
+                    Box(Modifier.size(8.dp).clip(CircleShape)
+                        .background(if (supported) accentColor else accentColor.copy(alpha = 0.25f)))
                     Spacer(Modifier.width(8.dp))
-                    Text(sig.displayName, color = EnactOnSurface, fontSize = 14.sp)
+                    Text(sig.displayName,
+                        color = if (supported) EnactOnSurface else EnactOnSurface.copy(alpha = 0.3f),
+                        fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
-                    Text(sig.unit, color = EnactOnSurface.copy(alpha = 0.4f), fontSize = 12.sp)
+                    if (!supported) {
+                        Text("not available", fontSize = 10.sp,
+                            color = EnactOnSurface.copy(alpha = 0.3f))
+                    } else {
+                        Text(sig.unit, color = EnactOnSurface.copy(alpha = 0.4f), fontSize = 12.sp)
+                    }
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -471,6 +485,7 @@ fun RecordingSetupSheet(
     val allSignals  = remember(activeType) { signalsForType(activeType) }
 
     // Local copy of selection so user can cancel without committing
+    val supportedKeysRec by viewModel.supportedSignalKeys.collectAsState()
     var localSelection by remember(config) {
         mutableStateOf(config.resolvedRecordingSignals(allSignals))
     }
@@ -507,7 +522,7 @@ fun RecordingSetupSheet(
 
             Text(
                 "Choose which parameters to record and their output rates (from Settings).",
-                fontSize = 12.sp, color = EnactOnSurface.copy(alpha = 0.5f),
+                fontSize = 12.sp, color = EnactOnSurfaceDim,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
@@ -516,6 +531,7 @@ fun RecordingSetupSheet(
                 val isSelected = sig.key in localSelection
                 val accentColor = Color(sig.color)
                 val rateHz = config.effectiveRateHz(sig.key, sig.rateConstraints)
+                val isSupported = supportedKeysRec.isEmpty() || sig.key in supportedKeysRec
                 val decimFactor = if (config.hardwareRateHz > 0 && rateHz > 0)
                     config.hardwareRateHz / rateHz else 1
 
@@ -527,7 +543,7 @@ fun RecordingSetupSheet(
                             if (isSelected) accentColor.copy(alpha = 0.08f)
                             else Color.Transparent
                         )
-                        .clickable {
+                        .clickable(enabled = isSupported) {
                             localSelection = if (isSelected) localSelection - sig.key
                             else localSelection + sig.key
                         }
@@ -549,8 +565,12 @@ fun RecordingSetupSheet(
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(sig.displayName, color = EnactOnSurface, fontSize = 13.sp)
-                        Text(sig.unit, fontSize = 10.sp, color = EnactOnSurface.copy(alpha = 0.4f))
+                        Text(sig.displayName,
+                            color = if (isSupported) EnactOnSurface else EnactOnSurface.copy(alpha = 0.3f),
+                            fontSize = 13.sp)
+                        Text(if (isSupported) sig.unit else "not available",
+                            fontSize = 10.sp,
+                            color = if (isSupported) EnactOnSurface.copy(alpha = 0.4f) else EnactOnSurface.copy(alpha = 0.25f))
                     }
                     // Rate badge
                     Column(horizontalAlignment = Alignment.End) {
@@ -593,7 +613,7 @@ fun RecordingSetupSheet(
                     "${localSelection.size} of ${allSignals.size} signals  •  " +
                     "hw: ${config.hardwareRateHz} Hz  •  " +
                     "~$totalHz rows/s total",
-                    fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.55f)
+                    fontSize = 11.sp, color = EnactOnSurfaceDim
                 )
             }
 

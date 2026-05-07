@@ -24,6 +24,10 @@ class ShimmerBluetoothManager(private val context: Context) {
     private val btAdapter: BluetoothAdapter? =
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
+    private val _sensorBitmapFlow = MutableStateFlow(intArrayOf(0, 0, 0))
+    /** The 3-byte sensor bitmap received from the device (or default). */
+    val sensorBitmapFlow: StateFlow<IntArray> = _sensorBitmapFlow.asStateFlow()
+
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
@@ -44,6 +48,7 @@ class ShimmerBluetoothManager(private val context: Context) {
     private var outputStream: OutputStream? = null
     private var streamJob: Job? = null
     private var sensorBitmap = intArrayOf(0, 0, 0)
+    private var channelList: List<Int> = emptyList()  // from inquiry response, authoritative
     private var calParams = CalibrationParams()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sppUUID = UUID.fromString(ShimmerProtocol.SPP_UUID)
@@ -126,13 +131,15 @@ class ShimmerBluetoothManager(private val context: Context) {
                 AppLog.i("BT", "Setting hardware rate: ${config.hardwareRateHz} Hz…")
                 val rateCmd = ShimmerProtocol.buildRateCommand(config.hardwareRateHz)
                 sendCommand(rateCmd)
-                // Wait for ACK
                 val rateAck = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
                 if (rateAck != null && rateAck.isNotEmpty() && rateAck[0] == ShimmerProtocol.ACK) {
                     AppLog.ok("BT", "Rate ACK received — hardware running at ${config.hardwareRateHz} Hz")
                 } else {
                     AppLog.w("BT", "No ACK for rate command (${rateAck?.size ?: 0}B) — continuing anyway")
                 }
+
+                // Drain any residual bytes in the BT buffer before starting stream
+                drainInputBuffer()
 
                 AppLog.i("BT", "Sending START_STREAMING (0x${"%02X".format(ShimmerProtocol.CMD_START_STREAMING.toInt() and 0xFF)})…")
                 sendCommand(byteArrayOf(ShimmerProtocol.CMD_START_STREAMING))
@@ -192,6 +199,7 @@ class ShimmerBluetoothManager(private val context: Context) {
             sensorBitmap[0] = response[bitmapOffset].toInt() and 0xFF
             sensorBitmap[1] = response[bitmapOffset + 1].toInt() and 0xFF
             sensorBitmap[2] = response[bitmapOffset + 2].toInt() and 0xFF
+            _sensorBitmapFlow.value = sensorBitmap.copyOf()
 
             // Also read back the actual sampling rate the device confirmed
             val regLo  = response[2].toInt() and 0xFF
@@ -199,15 +207,27 @@ class ShimmerBluetoothManager(private val context: Context) {
             val regVal = regLo or (regHi shl 8)
             val actualHz = ShimmerProtocol.registerToHz(regVal)
 
-            AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  actual rate: %d Hz".format(
-                sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz))
+            // Parse channel list
+            val numChannels = if (response.size > ShimmerProtocol.INQUIRY_CHANNELS_OFFSET)
+                response[ShimmerProtocol.INQUIRY_CHANNELS_OFFSET].toInt() and 0xFF else 0
+            channelList = if (numChannels > 0 && response.size >= ShimmerProtocol.INQUIRY_CHANNELS_OFFSET + 1 + numChannels) {
+                (0 until numChannels).map {
+                    response[ShimmerProtocol.INQUIRY_CHANNELS_OFFSET + 1 + it].toInt() and 0xFF
+                }
+            } else emptyList()
+
+            AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): %s".format(
+                sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz, numChannels,
+                channelList.joinToString { "0x%02X".format(it) }))
             AppLog.d("BT", "Full response (${response.size}B): " +
-                response.take(10).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+                response.take(16).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
         } else {
             AppLog.w("BT", "Inquiry bad/timeout — size=${response?.size ?: 0}B, using default bitmap for ${config.sensorType.name}")
             AppLog.d("BT", "Raw response: " + (response?.take(8)
                 ?.joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } ?: "null"))
             sensorBitmap = defaultBitmapForType(config.sensorType)
+            channelList = emptyList()  // no authoritative channel list — use bitmap fallback
+            _sensorBitmapFlow.value = sensorBitmap.copyOf()
             AppLog.d("BT", "Default bitmap: 0x%02X 0x%02X 0x%02X".format(
                 sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
         }
@@ -305,7 +325,8 @@ class ShimmerBluetoothManager(private val context: Context) {
                     }
                     if (bytesRead < 3) { AppLog.w("BT", "Packet too short: ${bytesRead}B"); continue }
 
-                    val rawValues = ShimmerPacketParser.parse(packetBuf.copyOf(bytesRead), sensorBitmap, calParams)
+                    val rawValues = ShimmerPacketParser.parse(
+                        packetBuf.copyOf(bytesRead), sensorBitmap, calParams, channelList)
                     if (rawValues.isEmpty()) continue
 
                     totalPackets++; meterCount++; consecutiveErrors = 0
@@ -356,20 +377,28 @@ class ShimmerBluetoothManager(private val context: Context) {
         }
     }
 
-    private fun estimatePacketSize(): Int {
-        var size = 3
-        val b0 = sensorBitmap[0]; val b1 = sensorBitmap[1]; val b2 = sensorBitmap[2]
-        if (b0 and ShimmerProtocol.SENSOR_A_ACCEL      != 0) size += 6
-        if (b0 and ShimmerProtocol.SENSOR_GYRO         != 0) size += 6
-        if (b0 and ShimmerProtocol.SENSOR_MAG          != 0) size += 6
-        if (b0 and ShimmerProtocol.SENSOR_EXG1_24BIT   != 0) size += 7
-        if (b0 and ShimmerProtocol.SENSOR_EXG2_24BIT   != 0) size += 7
-        if (b2 and ShimmerProtocol.SENSOR_EXG1_16BIT   != 0) size += 5
-        if (b2 and ShimmerProtocol.SENSOR_EXG2_16BIT   != 0) size += 5
-        if (b0 and ShimmerProtocol.SENSOR_GSR          != 0) size += 2
-        if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0 != 0) size += 2
-        if (b1 shr 13 and 0x01                         != 0) size += 2
-        return size.coerceAtLeast(4)
+    private fun estimatePacketSize(): Int =
+        if (channelList.isNotEmpty())
+            ShimmerProtocol.packetSizeFromChannels(channelList)
+        else
+            ShimmerProtocol.packetDataSize(sensorBitmap[0], sensorBitmap[1], sensorBitmap[2])
+                .coerceAtLeast(4)
+
+    /** Discard any bytes currently waiting in the input buffer (clears command ACKs etc.). */
+    private fun drainInputBuffer() {
+        try {
+            val stream = inputStream ?: return
+            var drained = 0
+            val deadline = System.currentTimeMillis() + 200L  // drain for max 200ms
+            val buf = ByteArray(64)
+            while (System.currentTimeMillis() < deadline) {
+                val avail = stream.available()
+                if (avail <= 0) break
+                val n = stream.read(buf, 0, minOf(avail, buf.size))
+                if (n > 0) drained += n else break
+            }
+            if (drained > 0) AppLog.d("BT", "Drained $drained stale bytes before stream start")
+        } catch (_: Exception) {}
     }
 
     fun cleanup() { disconnect(); scope.cancel() }

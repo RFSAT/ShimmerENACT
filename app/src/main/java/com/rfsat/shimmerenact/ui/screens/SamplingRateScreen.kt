@@ -52,7 +52,7 @@ fun SamplingRateScreen(
                         Text("Sampling Rates", color = EnactOnSurface, fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold)
                         Text(config.displayName, fontSize = 11.sp,
-                            color = EnactOnSurface.copy(alpha = 0.5f))
+                            color = EnactOnSurfaceDim)
                     }
                 },
                 navigationIcon = {
@@ -100,7 +100,7 @@ fun SamplingRateScreen(
                         "Per-signal rates below perform software decimation — " +
                         "a signal set to 50 Hz on a 250 Hz stream will emit every 5th sample.",
                         fontSize = 11.sp,
-                        color = EnactOnSurface.copy(alpha = 0.6f),
+                        color = EnactOnSurfaceDim,
                         lineHeight = 15.sp
                     )
                 }
@@ -260,7 +260,7 @@ fun HardwareRateCard(
                         Text(
                             if (preset >= 1000) "${preset/1000}k" else "$preset",
                             fontSize = 11.sp,
-                            color = if (isActive) EnactGreen else EnactOnSurface.copy(alpha = 0.5f)
+                            color = if (isActive) EnactGreen else EnactOnSurfaceDim
                         )
                     }
                 }

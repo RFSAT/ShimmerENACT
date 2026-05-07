@@ -49,7 +49,7 @@ fun RecordingsScreen(
                         Text(
                             "${sessions.size} session${if (sessions.size != 1) "s" else ""}  •  " +
                             "${sessions.sumOf { it.files.size }} files",
-                            fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.5f)
+                            fontSize = 11.sp, color = EnactOnSurfaceDim
                         )
                     }
                 },
@@ -195,11 +195,11 @@ fun SessionCard(
                             fontSize = 11.sp, color = EnactGreen.copy(alpha = 0.7f))
                         Text("  •  ", fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.3f))
                         Text(formatSize(totalSize),
-                            fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+                            fontSize = 11.sp, color = EnactOnSurfaceDim)
                         if (totalRows > 0) {
                             Text("  •  ", fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.3f))
                             Text("$totalRows rows",
-                                fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+                                fontSize = 11.sp, color = EnactOnSurfaceDim)
                         }
                     }
                 }

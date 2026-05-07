@@ -62,7 +62,7 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
             Text("ShimmerENACT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EnactGreen)
-            Text("Version 1.0.0", fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+            Text("Version 1.0.0", fontSize = 13.sp, color = EnactOnSurfaceDim)
 
             Spacer(Modifier.height(28.dp))
 
@@ -155,7 +155,7 @@ fun AboutScreen(onBack: () -> Unit) {
             AboutCard(
                 icon = Icons.Default.Code,
                 title = "Open Source",
-                accentColor = EnactOnSurface.copy(alpha = 0.6f)
+                accentColor = EnactOnSurfaceDim
             ) {
                 Text("Source Code", fontWeight = FontWeight.Bold, color = EnactOnSurface, fontSize = 14.sp)
                 Spacer(Modifier.height(4.dp))
@@ -171,10 +171,10 @@ fun AboutScreen(onBack: () -> Unit) {
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.OpenInBrowser, null,
-                        tint = EnactOnSurface.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                        tint = EnactOnSurfaceDim, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("github.com/rfsat/ShimmerENACT",
-                        color = EnactOnSurface.copy(alpha = 0.6f), fontSize = 12.sp)
+                        color = EnactOnSurfaceDim, fontSize = 12.sp)
                 }
             }
 

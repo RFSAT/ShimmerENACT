@@ -63,7 +63,7 @@ fun LogScreen(onBack: () -> Unit) {
                         Text("Diagnostic Log", color = EnactOnSurface, fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold)
                         Text("${filtered.size} entries", fontSize = 11.sp,
-                            color = EnactOnSurface.copy(alpha = 0.5f))
+                            color = EnactOnSurfaceDim)
                     }
                 },
                 navigationIcon = {
@@ -114,7 +114,7 @@ fun LogScreen(onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Filter:", fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+                Text("Filter:", fontSize = 11.sp, color = EnactOnSurfaceDim)
 
                 // "All" chip
                 FilterChip(
@@ -124,7 +124,7 @@ fun LogScreen(onBack: () -> Unit) {
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = EnactGreen.copy(alpha = 0.2f),
                         selectedLabelColor = EnactGreen,
-                        labelColor = EnactOnSurface.copy(alpha = 0.5f)
+                        labelColor = EnactOnSurfaceDim
                     )
                 )
                 listOf(LogLevel.OK, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR).forEach { lvl ->
@@ -275,7 +275,7 @@ fun LogEntryRow(entry: LogEntry, context: Context) {
                     entry.message,
                     fontSize = 10.sp,
                     color = if (entry.level == LogLevel.DEBUG)
-                        EnactOnSurface.copy(alpha = 0.45f) else EnactOnSurface.copy(alpha = 0.85f),
+                        EnactOnSurfaceDim else EnactOnSurface.copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace,
                     lineHeight = 14.sp
                 )
