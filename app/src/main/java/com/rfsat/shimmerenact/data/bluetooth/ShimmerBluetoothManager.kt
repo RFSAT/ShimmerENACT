@@ -180,6 +180,8 @@ class ShimmerBluetoothManager(private val context: Context) {
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
         val response = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
+        AppLog.i("BT", "Inquiry raw (${response?.size ?: 0}B): " +
+            (response?.take(20)?.joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } ?: "null"))
 
         // The Shimmer3 may send: [0xFF ACK][0x02 code][rate×2][bitmap×3][nch][codes...]
         // or just:               [0x02 code][rate×2][bitmap×3][nch][codes...]

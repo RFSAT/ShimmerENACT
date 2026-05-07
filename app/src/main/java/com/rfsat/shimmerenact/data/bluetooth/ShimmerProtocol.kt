@@ -47,7 +47,7 @@ object ShimmerProtocol {
 
     // ─── Channel type codes — Shimmer3 BT protocol (verified against SDK source) ──
     // Ref: ShimmerAndroidInstrumentDriver / DataObject.java / shimmer3 firmware
-    const val CH_TIMESTAMP:      Int = 0x00  // 3 bytes — the device sends 0x00 for timestamp
+    const val CH_TIMESTAMP:      Int = 0x01  // 3 bytes, always first
     // ADXL345 low-noise accelerometer (LN)
     const val CH_ACCEL_X:        Int = 0x02  // 2 bytes each
     const val CH_ACCEL_Y:        Int = 0x03
@@ -261,7 +261,7 @@ object ShimmerPacketParser {
                 else -> {
                     val w = ShimmerProtocol.channelWidth(ch)
                     offset += minOf(w, remaining())
-                    AppLog.i("PKT", "UNHANDLED channel 0x%02X (width=$w, offset now=$offset/${raw.size})".format(ch))
+                    AppLog.i("PKT", "Unhandled ch=0x%02X w=$w offset→$offset/${raw.size}  (known: ts=0x01,ax=0x02,ay=0x03,az=0x04,gx=0x0C,gsr=0x15,ppg=0x17)".format(ch))
                 }
             }
         }
