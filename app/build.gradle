@@ -36,16 +36,16 @@ android {
 
     signingConfigs {
         release {
-            def keystorePath  = System.getenv("KEYSTORE_PATH")  ?: project.findProperty("KEYSTORE_PATH")  ?: ""
-            def keyAlias      = System.getenv("KEY_ALIAS")       ?: project.findProperty("KEY_ALIAS")       ?: ""
-            def keyPassword   = System.getenv("KEY_PASSWORD")    ?: project.findProperty("KEY_PASSWORD")    ?: ""
-            def storePassword = System.getenv("STORE_PASSWORD")  ?: project.findProperty("STORE_PASSWORD")  ?: ""
+            def ksPath     = System.getenv("KEYSTORE_PATH")  ?: project.findProperty("KEYSTORE_PATH")  ?: ""
+            def ksAlias    = System.getenv("KEY_ALIAS")       ?: project.findProperty("KEY_ALIAS")       ?: ""
+            def ksKeyPass  = System.getenv("KEY_PASSWORD")    ?: project.findProperty("KEY_PASSWORD")    ?: ""
+            def ksStorePass= System.getenv("STORE_PASSWORD")  ?: project.findProperty("STORE_PASSWORD")  ?: ""
 
-            if (keystorePath) {
-                storeFile     file(keystorePath)
-                this.keyAlias      = keyAlias
-                this.keyPassword   = keyPassword
-                this.storePassword = storePassword
+            if (ksPath) {
+                storeFile     file(ksPath)
+                keyAlias      = ksAlias
+                keyPassword   = ksKeyPass
+                storePassword = ksStorePass
             }
         }
     }
