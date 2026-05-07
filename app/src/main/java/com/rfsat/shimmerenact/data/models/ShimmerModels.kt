@@ -119,7 +119,11 @@ data class SensorConfig(
     // This is sent to the device via CMD_SET_SAMPLING_RATE.
     // Range 1–6000 Hz; default 250 Hz.
     val hardwareRateHz: Int = DEFAULT_RATE_HZ,
+    // Signals shown in the Live view and chart
     val enabledSignals: Set<String>,
+    // Signals written to CSV files during recording (independent of display selection)
+    // Default = all signals for this sensor type
+    val recordingSignals: Set<String> = emptySet(),   // emptySet() means "use all signals"
     // Per-signal effective rate in Hz.  Must be ≤ hardwareRateHz.
     // Software decimation is applied in the stream processor.
     // Signals absent from this map inherit hardwareRateHz.
@@ -132,6 +136,11 @@ data class SensorConfig(
     }
 
     val btNameFilter: String get() = "Shimmer3-$btRadioId"
+
+    /** Signals to record — defaults to all signals if recordingSignals is empty. */
+    fun resolvedRecordingSignals(allSignals: List<ShimmerSignal>): Set<String> =
+        if (recordingSignals.isEmpty()) allSignals.map { it.key }.toSet()
+        else recordingSignals
 
     /** Effective rate for a given signal key, clamped to hardware rate and constraints. */
     fun effectiveRateHz(key: String, constraints: RateConstraints): Int {
@@ -169,8 +178,10 @@ enum class ConnectionState {
 data class RecordingState(
     val isRecording: Boolean = false,
     val startTimeMs: Long = 0L,
-    val sampleCount: Long = 0L,
-    val filePath: String = ""
+    val sampleCount: Long = 0L,      // total hardware samples seen since record start
+    val rowsWritten: Long = 0L,      // rows actually written across all files (after decimation)
+    val fileCount: Int = 0,
+    val sessionId: String = ""
 )
 
 // ─── Bluetooth device info ────────────────────────────────────────────────────

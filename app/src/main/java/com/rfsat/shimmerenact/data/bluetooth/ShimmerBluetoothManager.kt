@@ -217,11 +217,13 @@ class ShimmerBluetoothManager(private val context: Context) {
         SensorType.GSR_PLUS -> intArrayOf(
             ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
             ShimmerProtocol.SENSOR_GSR or ShimmerProtocol.SENSOR_EXP_BOARD_A0,
-            ShimmerProtocol.SENSOR_VBATT shr 8, 0)
+            ShimmerProtocol.SENSOR_VBATT,   // byte1: 0x20
+            0)
         SensorType.EXG -> intArrayOf(
             ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
             ShimmerProtocol.SENSOR_EXG1_24BIT or ShimmerProtocol.SENSOR_EXG2_24BIT,
-            ShimmerProtocol.SENSOR_VBATT shr 8, 0)
+            ShimmerProtocol.SENSOR_VBATT,   // byte1: 0x20
+            0)
         SensorType.CUSTOM -> intArrayOf(
             ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0, 0, 0)
     }

@@ -82,9 +82,9 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     private val _recordingState = MutableStateFlow(RecordingState())
     val recordingState: StateFlow<RecordingState> = _recordingState.asStateFlow()
 
-    // ─── Recording files list ─────────────────────────────────────────────────
-    private val _recordings = MutableStateFlow<List<RecordingFile>>(emptyList())
-    val recordings: StateFlow<List<RecordingFile>> = _recordings.asStateFlow()
+    // ─── Recording sessions list ──────────────────────────────────────────────
+    private val _sessions = MutableStateFlow<List<com.rfsat.shimmerenact.data.repository.RecordingSession>>(emptyList())
+    val sessions: StateFlow<List<com.rfsat.shimmerenact.data.repository.RecordingSession>> = _sessions.asStateFlow()
 
     // ─── Samples-per-second meter ─────────────────────────────────────────────
     private var lastSpsWindowStart = System.currentTimeMillis()
@@ -95,7 +95,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         observeSamples()
         observeErrors()
         loadPrefs()
-        loadRecordings()
+        loadSessions()
     }
 
     private fun observeConnectionState() {
@@ -119,7 +119,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                     spsCount = 0; lastSpsWindowStart = now; rate
                 } else _uiState.value.samplesPerSecond
 
-                // Ring buffer
+                // Ring buffer for chart
                 sampleBuffer.addLast(sample)
                 while (sampleBuffer.size > ShimmerProtocol.CHART_BUFFER_SIZE) {
                     sampleBuffer.removeFirst()
@@ -131,11 +131,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                     samplesPerSecond = sps
                 )}
 
-                // Write to CSV if recording
+                // Write to per-signal CSV files if recording
                 if (recordingRepo.isRecording) {
-                    val signals = signalsForType(activeConfig.value.sensorType)
-                    recordingRepo.writeSample(sample, signals)
-                    _recordingState.update { it.copy(sampleCount = recordingRepo.currentSampleCount) }
+                    recordingRepo.writeSampleSync(sample)
+                    _recordingState.update { rs ->
+                        rs.copy(
+                            sampleCount = rs.sampleCount + 1,
+                            rowsWritten = recordingRepo.totalSamplesWritten
+                        )
+                    }
                 }
             }
         }
@@ -159,9 +163,9 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun loadRecordings() {
+    private fun loadSessions() {
         viewModelScope.launch {
-            _recordings.value = recordingRepo.listRecordings()
+            _sessions.value = recordingRepo.listSessions()
         }
     }
 
@@ -234,18 +238,32 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     fun startRecording() {
         viewModelScope.launch {
             val config = activeConfig.value
-            val signals = signalsForType(config.sensorType)
-            AppLog.i("REC", "Starting recording — ${signals.size} signals, device: ${config.displayName}")
-            val result = recordingRepo.startRecording(config.displayName, signals)
-            result.onSuccess { path ->
-                AppLog.ok("REC", "Recording started → $path")
+            val allSignals = signalsForType(config.sensorType)
+            val recKeys = config.resolvedRecordingSignals(allSignals)
+            val recSignals = allSignals.filter { it.key in recKeys }
+
+            AppLog.i("REC", "Starting — ${recSignals.size} signals at hw=${config.hardwareRateHz}Hz")
+            recSignals.forEach { sig ->
+                val rate = config.effectiveRateHz(sig.key, sig.rateConstraints)
+                AppLog.d("REC", "  ${sig.key}: $rate Hz")
+            }
+
+            val result = recordingRepo.startRecording(
+                deviceName = config.displayName,
+                signals = recSignals,
+                signalRatesHz = config.signalRatesHz,
+                hardwareHz = config.hardwareRateHz
+            )
+            result.onSuccess { paths ->
+                AppLog.ok("REC", "Recording started — ${paths.size} files")
                 _recordingState.value = RecordingState(
                     isRecording = true,
                     startTimeMs = System.currentTimeMillis(),
-                    filePath = path
+                    fileCount = paths.size,
+                    sessionId = recordingRepo.currentSessionId
                 )
             }.onFailure { e ->
-                AppLog.e("REC", "Recording failed: ${e.message}")
+                AppLog.e("REC", "Failed to start: ${e.message}")
                 _uiState.update { it.copy(errorMessage = "Recording failed: ${e.message}") }
             }
         }
@@ -254,20 +272,58 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     fun stopRecording() {
         viewModelScope.launch {
             val result = recordingRepo.stopRecording()
-            result.onSuccess { (path, count) ->
-                AppLog.ok("REC", "Recording stopped — $count samples saved to ${path.substringAfterLast('/')}")
+            result.onSuccess { session ->
+                AppLog.ok("REC", "Stopped — ${session.files.size} files, ${recordingRepo.totalSamplesWritten} rows")
             }.onFailure { e ->
-                AppLog.e("REC", "Stop recording error: ${e.message}")
+                AppLog.e("REC", "Stop error: ${e.message}")
             }
             _recordingState.value = RecordingState()
-            loadRecordings()
+            loadSessions()
         }
     }
 
-    fun deleteRecording(path: String) {
+    /** Toggle a signal key in the recording selection for the active sensor type. */
+    fun toggleRecordingSignal(key: String) {
+        val type = _activeSensorType.value
+        val allSignals = signalsForType(type)
+        fun toggle(config: SensorConfig): SensorConfig {
+            // If empty → all are selected; expand to explicit full set before toggling
+            val current = config.resolvedRecordingSignals(allSignals)
+            val updated = if (key in current) current - key else current + key
+            // If result equals full set, store as empty (meaning "all")
+            val stored = if (updated == allSignals.map { it.key }.toSet()) emptySet() else updated
+            return config.copy(recordingSignals = stored)
+        }
+        when (type) {
+            SensorType.GSR_PLUS -> _gsrConfig.update { toggle(it) }
+            SensorType.EXG      -> _exgConfig.update { toggle(it) }
+            SensorType.CUSTOM   -> _customConfig.update { toggle(it) }
+        }
+    }
+
+    /** Set all recording signals at once (empty = all). */
+    fun setRecordingSignals(keys: Set<String>) {
+        val type = _activeSensorType.value
+        val allKeys = signalsForType(type).map { it.key }.toSet()
+        val stored = if (keys == allKeys) emptySet() else keys
+        when (type) {
+            SensorType.GSR_PLUS -> _gsrConfig.update { it.copy(recordingSignals = stored) }
+            SensorType.EXG      -> _exgConfig.update { it.copy(recordingSignals = stored) }
+            SensorType.CUSTOM   -> _customConfig.update { it.copy(recordingSignals = stored) }
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
         viewModelScope.launch {
-            recordingRepo.deleteRecording(path)
-            loadRecordings()
+            recordingRepo.deleteSession(sessionId)
+            loadSessions()
+        }
+    }
+
+    fun deleteRecordingFile(path: String) {
+        viewModelScope.launch {
+            recordingRepo.deleteFile(path)
+            loadSessions()
         }
     }
 

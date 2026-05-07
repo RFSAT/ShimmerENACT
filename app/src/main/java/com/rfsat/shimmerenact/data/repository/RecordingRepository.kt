@@ -2,6 +2,7 @@ package com.rfsat.shimmerenact.data.repository
 
 import android.content.Context
 import android.os.Environment
+import com.rfsat.shimmerenact.data.models.RateConstraints
 import com.rfsat.shimmerenact.data.models.ShimmerSample
 import com.rfsat.shimmerenact.data.models.ShimmerSignal
 import kotlinx.coroutines.Dispatchers
@@ -12,132 +13,237 @@ import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.*
 
+// ─── Per-signal recording channel ─────────────────────────────────────────────
+
+private data class SignalChannel(
+    val signal: ShimmerSignal,
+    val targetHz: Int,         // desired output rate
+    val hardwareHz: Int,       // hardware stream rate
+    val writer: BufferedWriter,
+    val file: File
+) {
+    // Emit every Nth hardware sample to achieve targetHz
+    val decimationStep: Int = (hardwareHz.toDouble() / targetHz.coerceAtLeast(1))
+        .coerceAtLeast(1.0).toInt()
+    var counter: Int = 0
+    var rowsWritten: Long = 0L
+}
+
+// ─── Session metadata ─────────────────────────────────────────────────────────
+
+data class RecordingSession(
+    val sessionId: String,          // timestamp-based, same for all files in the session
+    val deviceName: String,
+    val startTimeMs: Long,
+    val files: List<RecordingFile>  // one per signal
+)
+
+// ─── Repository ───────────────────────────────────────────────────────────────
+
 class RecordingRepository(private val context: Context) {
 
-    private var writer: BufferedWriter? = null
-    private var currentFile: File? = null
-    private var headerWritten = false
-    private var sampleCount = 0L
+    private val channels = mutableListOf<SignalChannel>()
+    private var sessionId: String = ""
+    private var sessionDir: File? = null
+    private var _isRecording = false
+    private var _totalSamplesWritten = 0L
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
-    private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+    private val sessionDateFmt = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
+    private val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
     }
 
-    // ─── Start a new recording session ───────────────────────────────────────
+    val isRecording: Boolean get() = _isRecording
+    val totalSamplesWritten: Long get() = _totalSamplesWritten
+    val currentSessionId: String get() = sessionId
+    val currentSessionDir: String get() = sessionDir?.absolutePath ?: ""
+
+    // ─── Start recording — one file per selected signal ───────────────────────
     suspend fun startRecording(
         deviceName: String,
-        signals: List<ShimmerSignal>
-    ): Result<String> = withContext(Dispatchers.IO) {
+        signals: List<ShimmerSignal>,       // signals to record (already filtered to selection)
+        signalRatesHz: Map<String, Int>,    // key → target Hz; missing = hardwareHz
+        hardwareHz: Int
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        if (_isRecording) stopRecording()
         try {
-            val dir = getRecordingDir()
-            val ts = dateFormat.format(Date())
+            sessionId = sessionDateFmt.format(Date())
             val safeName = deviceName.replace(Regex("[^A-Za-z0-9_-]"), "_")
-            val file = File(dir, "shimmer_${safeName}_$ts.csv")
-            currentFile = file
-            writer = BufferedWriter(FileWriter(file))
 
-            // Write CSV header
-            val header = buildString {
-                append("timestamp_iso,timestamp_ms")
-                signals.forEach { sig -> append(",${sig.key}_${sig.unit.replace("/","per")}") }
-                // Add metadata comment line
+            // Create a session sub-directory so all files from one recording session
+            // are grouped together:  ShimmerENACT / session_YYYY-MM-DD_HH-mm-ss /
+            val rootDir = getRootDir()
+            val dir = File(rootDir, "${safeName}_$sessionId").also { it.mkdirs() }
+            sessionDir = dir
+
+            val startTs = isoFmt.format(Date())
+            val paths = mutableListOf<String>()
+
+            for (sig in signals) {
+                val targetHz = (signalRatesHz[sig.key] ?: hardwareHz).coerceIn(1, hardwareHz)
+                val safeKey = sig.key.replace(Regex("[^A-Za-z0-9_]"), "_")
+                val file = File(dir, "${safeKey}.csv")
+                val bw = BufferedWriter(FileWriter(file))
+
+                // Header block
+                bw.write("# RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)\n")
+                bw.write("# Device: $deviceName\n")
+                bw.write("# Signal: ${sig.displayName}  [${sig.unit}]\n")
+                bw.write("# Hardware rate: $hardwareHz Hz  |  Output rate: $targetHz Hz\n")
+                bw.write("# Session start: $startTs\n")
+                bw.write("# Generated by ShimmerENACT v1.0\n")
+                bw.write("timestamp_iso,timestamp_ms,${sig.key}_${sig.unit.replace("/", "per")}\n")
+
+                channels.add(SignalChannel(sig, targetHz, hardwareHz, bw, file))
+                paths.add(file.absolutePath)
             }
-            writer?.write("# RFSAT Limited - ENACT Project (Horizon Europe Grant 101157151)\n")
-            writer?.write("# Device: $deviceName\n")
-            writer?.write("# Session start: ${isoFormat.format(Date())}\n")
-            writer?.write("# Generated by ShimmerENACT v1.0\n")
-            writer?.write(header + "\n")
-            headerWritten = true
-            sampleCount = 0L
 
-            Result.success(file.absolutePath)
+            _isRecording = true
+            _totalSamplesWritten = 0L
+            AppLog.ok("REC", "Session started — ${signals.size} files in ${dir.name}")
+            Result.success(paths)
         } catch (e: Exception) {
+            AppLog.e("REC", "startRecording failed: ${e.message}")
+            channels.forEach { runCatching { it.writer.close() } }
+            channels.clear()
             Result.failure(e)
         }
     }
 
-    // ─── Write a single sample ────────────────────────────────────────────────
-    suspend fun writeSample(
-        sample: ShimmerSample,
-        signals: List<ShimmerSignal>
-    ) = withContext(Dispatchers.IO) {
-        if (!headerWritten || writer == null) return@withContext
-        try {
-            val row = buildString {
-                append(isoFormat.format(Date(sample.timestampMs)))
-                append(",")
-                append(sample.timestampMs)
-                signals.forEach { sig ->
-                    append(",")
-                    val v = sample.values[sig.key]
-                    if (v != null) append("%.6f".format(v)) else append("")
-                }
+    // ─── Write a hardware sample — applies per-channel decimation ─────────────
+    // Call from the hot sample path; runs on IO dispatcher via ViewModel coroutine.
+    fun writeSampleSync(sample: ShimmerSample) {
+        if (!_isRecording || channels.isEmpty()) return
+        val isoTs = isoFmt.format(Date(sample.timestampMs))
+        var wrote = false
+        for (ch in channels) {
+            val v = sample.values[ch.signal.key] ?: continue
+            ch.counter++
+            if (ch.counter >= ch.decimationStep) {
+                ch.counter = 0
+                ch.writer.write("$isoTs,${sample.timestampMs},${"%.6f".format(v)}\n")
+                ch.rowsWritten++
+                wrote = true
             }
-            writer?.write(row + "\n")
-            sampleCount++
-            // Flush every 100 samples to keep data safe
-            if (sampleCount % 100L == 0L) writer?.flush()
-        } catch (_: Exception) {}
+        }
+        if (wrote) {
+            _totalSamplesWritten++
+            // Flush every 200 written rows (across all channels) to keep data safe
+            if (_totalSamplesWritten % 200L == 0L) {
+                channels.forEach { runCatching { it.writer.flush() } }
+            }
+        }
     }
 
     // ─── Stop recording ───────────────────────────────────────────────────────
-    suspend fun stopRecording(): Result<Pair<String, Long>> = withContext(Dispatchers.IO) {
-        try {
-            writer?.write("# Session end: ${isoFormat.format(Date())}\n")
-            writer?.write("# Total samples: $sampleCount\n")
-            writer?.flush()
-            writer?.close()
-            writer = null
-            headerWritten = false
-            val path = currentFile?.absolutePath ?: ""
-            val count = sampleCount
-            sampleCount = 0L
-            Result.success(Pair(path, count))
-        } catch (e: Exception) {
-            Result.failure(e)
+    suspend fun stopRecording(): Result<RecordingSession> = withContext(Dispatchers.IO) {
+        if (!_isRecording) return@withContext Result.failure(IllegalStateException("Not recording"))
+        _isRecording = false
+        val endTs = isoFmt.format(Date())
+        val files = mutableListOf<RecordingFile>()
+        for (ch in channels) {
+            try {
+                ch.writer.write("# Session end: $endTs\n")
+                ch.writer.write("# Rows written: ${ch.rowsWritten}\n")
+                ch.writer.flush()
+                ch.writer.close()
+                files.add(RecordingFile(
+                    name = ch.file.nameWithoutExtension,
+                    path = ch.file.absolutePath,
+                    sizeBytes = ch.file.length(),
+                    lastModified = ch.file.lastModified(),
+                    signalDisplayName = ch.signal.displayName,
+                    signalUnit = ch.signal.unit,
+                    rateHz = ch.targetHz,
+                    sessionId = sessionId,
+                    rowCount = ch.rowsWritten
+                ))
+            } catch (e: Exception) {
+                AppLog.e("REC", "Error closing ${ch.signal.key}: ${e.message}")
+            }
         }
+        val session = RecordingSession(
+            sessionId = sessionId,
+            deviceName = sessionDir?.parentFile?.name ?: "",
+            startTimeMs = sessionDateFmt.parse(sessionId)?.time ?: 0L,
+            files = files
+        )
+        channels.clear()
+        AppLog.ok("REC", "Session stopped — ${files.size} files, $_totalSamplesWritten rows total")
+        Result.success(session)
     }
 
-    // ─── List all recordings ──────────────────────────────────────────────────
-    suspend fun listRecordings(): List<RecordingFile> = withContext(Dispatchers.IO) {
-        getRecordingDir().listFiles { f -> f.extension == "csv" }
+    // ─── List sessions (grouped by session sub-directory) ─────────────────────
+    suspend fun listSessions(): List<RecordingSession> = withContext(Dispatchers.IO) {
+        val root = getRootDir()
+        root.listFiles { f -> f.isDirectory }
             ?.sortedByDescending { it.lastModified() }
-            ?.map { f ->
-                RecordingFile(
-                    name = f.nameWithoutExtension,
-                    path = f.absolutePath,
-                    sizeBytes = f.length(),
-                    lastModified = f.lastModified()
+            ?.map { dir ->
+                val csvFiles = dir.listFiles { f -> f.extension == "csv" }
+                    ?.sortedBy { it.name }
+                    ?.map { f ->
+                        // Parse rate from header comment if present
+                        val rate = f.bufferedReader().useLines { lines ->
+                            lines.find { it.startsWith("# Output rate:") }
+                                ?.substringAfter("Output rate:")
+                                ?.trim()?.substringBefore(" Hz")?.toIntOrNull()
+                                ?: lines.find { it.startsWith("# Hardware rate:") }
+                                    ?.substringAfter("Hz  |  Output rate:")
+                                    ?.trim()?.substringBefore(" Hz")?.toIntOrNull()
+                                ?: 0
+                        }
+                        val rows = f.bufferedReader().useLines { lines ->
+                            lines.find { it.startsWith("# Rows written:") }
+                                ?.substringAfter(":")?.trim()?.toLongOrNull() ?: 0L
+                        }
+                        RecordingFile(
+                            name = f.nameWithoutExtension,
+                            path = f.absolutePath,
+                            sizeBytes = f.length(),
+                            lastModified = f.lastModified(),
+                            sessionId = dir.name.substringAfterLast("_", dir.name),
+                            rateHz = rate,
+                            rowCount = rows
+                        )
+                    } ?: emptyList()
+
+                RecordingSession(
+                    sessionId = dir.name,
+                    deviceName = dir.name.substringBeforeLast("_"),
+                    startTimeMs = dir.lastModified(),
+                    files = csvFiles
                 )
             } ?: emptyList()
     }
 
-    // ─── Delete a recording ───────────────────────────────────────────────────
-    suspend fun deleteRecording(path: String): Boolean = withContext(Dispatchers.IO) {
+    // ─── Delete session directory ─────────────────────────────────────────────
+    suspend fun deleteSession(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        getRootDir().listFiles { f -> f.isDirectory && f.name.contains(sessionId) }
+            ?.firstOrNull()?.deleteRecursively() ?: false
+    }
+
+    // ─── Delete single file ───────────────────────────────────────────────────
+    suspend fun deleteFile(path: String): Boolean = withContext(Dispatchers.IO) {
         File(path).delete()
     }
 
-    // ─── Directory helper ─────────────────────────────────────────────────────
-    private fun getRecordingDir(): File {
-        val dir = File(
-            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-            "ShimmerENACT"
-        )
-        if (!dir.exists()) dir.mkdirs()
-        return dir
-    }
-
-    val isRecording: Boolean get() = headerWritten && writer != null
-    val currentSampleCount: Long get() = sampleCount
-    val currentFilePath: String get() = currentFile?.absolutePath ?: ""
+    private fun getRootDir(): File =
+        File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "ShimmerENACT")
+            .also { if (!it.exists()) it.mkdirs() }
 }
+
+// ─── Data classes ─────────────────────────────────────────────────────────────
 
 data class RecordingFile(
     val name: String,
     val path: String,
     val sizeBytes: Long,
-    val lastModified: Long
+    val lastModified: Long,
+    val signalDisplayName: String = name,
+    val signalUnit: String = "",
+    val rateHz: Int = 0,
+    val sessionId: String = "",
+    val rowCount: Long = 0L
 ) {
     val sizeDisplay: String get() = when {
         sizeBytes > 1_048_576 -> "%.1f MB".format(sizeBytes / 1_048_576.0)

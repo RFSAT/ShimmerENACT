@@ -50,6 +50,7 @@ fun DashboardScreen(
     }
     var showSignalSelector by remember { mutableStateOf(false) }
     var showChart by remember { mutableStateOf(true) }
+    var showRecordingSetup by remember { mutableStateOf(false) }
 
     // Recording elapsed time
     var elapsedSec by remember { mutableStateOf(0L) }
@@ -101,7 +102,7 @@ fun DashboardScreen(
             RecordingBar(
                 recordingState = recordingState,
                 elapsedSec = elapsedSec,
-                onStart = viewModel::startRecording,
+                onStart = { showRecordingSetup = true },
                 onStop = viewModel::stopRecording
             )
         },
@@ -152,6 +153,17 @@ fun DashboardScreen(
             onConfirm = { selectedChartSignals = it; showSignalSelector = false }
         )
     }
+
+    if (showRecordingSetup) {
+        RecordingSetupSheet(
+            viewModel = viewModel,
+            onDismiss = { showRecordingSetup = false },
+            onStart = {
+                showRecordingSetup = false
+                viewModel.startRecording()
+            }
+        )
+    }
 }
 
 // ─── Live chart ───────────────────────────────────────────────────────────────
@@ -181,14 +193,25 @@ fun LiveChartCard(
                         setBackgroundColor(AndroidColor.TRANSPARENT)
 
                         xAxis.apply {
-                            setDrawLabels(false)
-                            setDrawGridLines(false)
+                            setDrawLabels(true)
+                            setDrawGridLines(true)
+                            gridColor = EnactSurfaceVar.copy(alpha = 0.4f).toArgb()
                             axisLineColor = EnactSurfaceVar.toArgb()
+                            textColor = EnactOnSurface.copy(alpha = 0.45f).toArgb()
+                            textSize = 8f
+                            labelCount = 5
+                            // X values are seconds; format as "Xs"
+                            valueFormatter = object : com.github.mikephil.charting.formatter.ValueFormatter() {
+                                override fun getFormattedValue(value: Float) =
+                                    "${"%.1f".format(value)}s"
+                            }
+                            position = com.github.mikephil.charting.components.XAxis.XAxisPosition.BOTTOM
                         }
                         axisLeft.apply {
                             textColor = EnactOnSurface.copy(alpha = 0.5f).toArgb()
                             gridColor = EnactSurfaceVar.copy(alpha = 0.5f).toArgb()
                             axisLineColor = EnactSurfaceVar.toArgb()
+                            textSize = 8f
                         }
                         axisRight.isEnabled = false
                         setNoDataText("Waiting for data…")
@@ -197,23 +220,46 @@ fun LiveChartCard(
                 },
                 update = { chart ->
                     if (samples.isEmpty() || signals.isEmpty()) return@AndroidView
+
+                    // Use real timestamps: X = seconds since first sample in the buffer
+                    val t0 = samples.first().timestampMs
+
                     val dataSets = signals.mapIndexed { idx, sig ->
                         val color = ChartColors.getOrElse(idx) { EnactGreen }
-                        val entries = samples.mapIndexed { i, s ->
-                            Entry(i.toFloat(), s.values[sig.key]?.toFloat() ?: 0f)
+                        val entries = samples.mapNotNull { s ->
+                            val v = s.values[sig.key] ?: return@mapNotNull null
+                            val xSec = (s.timestampMs - t0) / 1000f
+                            Entry(xSec, v.toFloat())
                         }
+                        if (entries.isEmpty()) return@mapIndexed null
                         LineDataSet(entries, sig.displayName).apply {
                             this.color = color.toArgb()
                             setDrawCircles(false)
                             setDrawValues(false)
                             lineWidth = 1.5f
-                            mode = LineDataSet.Mode.CUBIC_BEZIER
+                            mode = LineDataSet.Mode.LINEAR   // LINEAR is faster than CUBIC for live data
                         }
-                    }
+                    }.filterNotNull()
+
+                    if (dataSets.isEmpty()) return@AndroidView
                     chart.data = LineData(dataSets)
+                    chart.notifyDataSetChanged()
                     chart.invalidate()
                 }
             )
+
+            // Window duration label (top-left)
+            if (samples.size >= 2) {
+                val windowSec = (samples.last().timestampMs - samples.first().timestampMs) / 1000f
+                Text(
+                    "%.1fs window".format(windowSec),
+                    fontSize = 9.sp,
+                    color = EnactOnSurface.copy(alpha = 0.3f),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 8.dp, top = 4.dp)
+                )
+            }
 
             // Select signals button
             IconButton(
@@ -302,17 +348,16 @@ fun RecordingBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (recordingState.isRecording) {
-                // Pulsing record dot
-                Box(
-                    Modifier.size(10.dp).clip(CircleShape)
-                        .background(EnactError)
-                )
+                Box(Modifier.size(10.dp).clip(CircleShape).background(EnactError))
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Recording  $elapsed",
                         color = EnactError, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text("${recordingState.sampleCount} samples",
-                        color = EnactOnSurface.copy(alpha = 0.55f), fontSize = 11.sp)
+                    Text(
+                        "${recordingState.fileCount} file${if (recordingState.fileCount != 1) "s" else ""}  •  " +
+                        "${recordingState.rowsWritten} rows written",
+                        color = EnactOnSurface.copy(alpha = 0.55f), fontSize = 11.sp
+                    )
                 }
                 Button(
                     onClick = onStop,
@@ -408,6 +453,171 @@ fun SignalSelectorSheet(
                 Text("Apply", color = EnactDark, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+// ─── Recording setup sheet ────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecordingSetupSheet(
+    viewModel: ShimmerViewModel,
+    onDismiss: () -> Unit,
+    onStart: () -> Unit
+) {
+    val activeType by viewModel.activeSensorType.collectAsState()
+    val config     by viewModel.activeConfig.collectAsState()
+    val allSignals  = remember(activeType) { signalsForType(activeType) }
+
+    // Local copy of selection so user can cancel without committing
+    var localSelection by remember(config) {
+        mutableStateOf(config.resolvedRecordingSignals(allSignals))
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = EnactSurface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            // Header
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FiberManualRecord, null,
+                    tint = EnactError, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Recording Setup", fontWeight = FontWeight.Bold,
+                    color = EnactOnSurface, fontSize = 16.sp)
+                Spacer(Modifier.weight(1f))
+                // Select all / none
+                TextButton(onClick = {
+                    localSelection = if (localSelection.size == allSignals.size) emptySet()
+                    else allSignals.map { it.key }.toSet()
+                }) {
+                    Text(
+                        if (localSelection.size == allSignals.size) "None" else "All",
+                        color = EnactGreen, fontSize = 12.sp
+                    )
+                }
+            }
+
+            Text(
+                "Choose which parameters to record and their output rates (from Settings).",
+                fontSize = 12.sp, color = EnactOnSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            // Signal list with per-signal rate display
+            allSignals.forEach { sig ->
+                val isSelected = sig.key in localSelection
+                val accentColor = Color(sig.color)
+                val rateHz = config.effectiveRateHz(sig.key, sig.rateConstraints)
+                val decimFactor = if (config.hardwareRateHz > 0 && rateHz > 0)
+                    config.hardwareRateHz / rateHz else 1
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isSelected) accentColor.copy(alpha = 0.08f)
+                            else Color.Transparent
+                        )
+                        .clickable {
+                            localSelection = if (isSelected) localSelection - sig.key
+                            else localSelection + sig.key
+                        }
+                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = accentColor,
+                            uncheckedColor = EnactOnSurface.copy(alpha = 0.3f)
+                        )
+                    )
+                    Box(
+                        Modifier.size(8.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(accentColor)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(sig.displayName, color = EnactOnSurface, fontSize = 13.sp)
+                        Text(sig.unit, fontSize = 10.sp, color = EnactOnSurface.copy(alpha = 0.4f))
+                    }
+                    // Rate badge
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "$rateHz Hz",
+                            fontSize = 12.sp,
+                            color = if (isSelected) accentColor else EnactOnSurface.copy(alpha = 0.3f),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (decimFactor > 1) {
+                            Text(
+                                "÷$decimFactor",
+                                fontSize = 9.sp,
+                                color = EnactWarning.copy(alpha = if (isSelected) 0.8f else 0.3f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Summary line
+            val totalHz = localSelection.sumOf { key ->
+                val sig = allSignals.find { it.key == key }
+                if (sig != null) config.effectiveRateHz(key, sig.rateConstraints).toLong() else 0L
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(EnactSurfaceVar)
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Info, null, tint = EnactGreen.copy(alpha = 0.6f),
+                    modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "${localSelection.size} of ${allSignals.size} signals  •  " +
+                    "hw: ${config.hardwareRateHz} Hz  •  " +
+                    "~$totalHz rows/s total",
+                    fontSize = 11.sp, color = EnactOnSurface.copy(alpha = 0.55f)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            Button(
+                onClick = {
+                    // Commit selection then start
+                    viewModel.setRecordingSignals(localSelection)
+                    onStart()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = localSelection.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(containerColor = EnactError),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.FiberManualRecord, null,
+                    tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Start Recording (${localSelection.size} signals)",
+                    color = Color.White, fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

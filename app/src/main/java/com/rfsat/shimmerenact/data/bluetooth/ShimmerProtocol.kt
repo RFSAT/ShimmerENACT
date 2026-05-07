@@ -142,7 +142,7 @@ object ShimmerPacketParser {
             return true
         }
 
-        // 12-bit unsigned ADC value (packed in 2 bytes, lower 12 bits used)
+        // 12-bit unsigned ADC value — Shimmer3 packs in 2 bytes little-endian, lower 12 bits
         fun readAdc12(): Int {
             if (!hasBytes(2)) { offset += 2; return 0 }
             val lo = raw[offset].toInt() and 0xFF
@@ -151,15 +151,16 @@ object ShimmerPacketParser {
             return (lo or (hi shl 8)) and 0x0FFF
         }
 
-        // 14-bit signed (ADXL345 low-power mode): 2 bytes, signed, only lower 14 bits valid
-        fun readAccel14(): Int {
+        // ADXL345 analog accel: the Shimmer3 BT firmware sends full 16-bit signed
+        // little-endian per axis (the chip operates in full-resolution mode, 13-bit,
+        // but the firmware sign-extends to 16 bits before sending over BT).
+        fun readAccel(): Int {
             if (!hasBytes(2)) { offset += 2; return 0 }
             val lo = raw[offset].toInt() and 0xFF
             val hi = raw[offset + 1].toInt() and 0xFF
             offset += 2
-            val raw16 = lo or (hi shl 8)
-            // Sign-extend 14-bit: bit 13 is sign
-            return if (raw16 and 0x2000 != 0) raw16 or 0xFFFFC000.toInt() else raw16 and 0x3FFF
+            val v = lo or (hi shl 8)
+            return if (v >= 0x8000) v - 0x10000 else v
         }
 
         // 16-bit signed
@@ -187,11 +188,11 @@ object ShimmerPacketParser {
         val b1 = sensorBitmap[1]
         val b2 = sensorBitmap[2]
 
-        // ── ADXL345 analog accelerometer (14-bit, 3 axes) ────────────────────
+        // ── ADXL345 analog accelerometer (16-bit wire format, 3 axes) ────────
         if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0) {
-            result["accel_x"] = calParams.calibrateAccel(readAccel14(), 0)
-            result["accel_y"] = calParams.calibrateAccel(readAccel14(), 1)
-            result["accel_z"] = calParams.calibrateAccel(readAccel14(), 2)
+            result["accel_x"] = calParams.calibrateAccel(readAccel(), 0)
+            result["accel_y"] = calParams.calibrateAccel(readAccel(), 1)
+            result["accel_z"] = calParams.calibrateAccel(readAccel(), 2)
         }
 
         // ── MPU9150 Gyroscope (16-bit, 3 axes) ───────────────────────────────
@@ -257,7 +258,8 @@ object ShimmerPacketParser {
 // ─── Calibration parameters ───────────────────────────────────────────────────
 
 data class CalibrationParams(
-    // ADXL345: sensitivity in LSB/g (14-bit mode, ±2g range → 256 LSB/g)
+    // ADXL345 full-resolution mode: ±2g, 13-bit output sign-extended to 16-bit over BT
+    // Sensitivity = 256 LSB/g in full-res ±2g mode
     val accelOffset: DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
     val accelSens:   DoubleArray = doubleArrayOf(256.0, 256.0, 256.0),
 
@@ -278,7 +280,7 @@ data class CalibrationParams(
     // PPG: 3.0V reference, 12-bit ADC
     val ppgVoltageRef: Double = 3000.0   // mV
 ) {
-    /** ADXL345 14-bit → m/s²  (offset + sensitivity then × g) */
+    /** ADXL345 16-bit (full-res) → m/s²  */
     fun calibrateAccel(raw: Int, axis: Int): Double =
         ((raw - accelOffset[axis]) / accelSens[axis]) * 9.80665
 
