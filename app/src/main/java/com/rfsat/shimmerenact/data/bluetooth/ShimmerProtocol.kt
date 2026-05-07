@@ -50,42 +50,60 @@ object ShimmerProtocol {
     const val INQUIRY_CHANNELS_OFFSET: Int = 7  // byte index of channel count
     const val INQUIRY_MIN_LEN:       Int = 8
 
-    // ─── Channel type codes from the Shimmer3 BT protocol ─────────────────────
-    // Each code identifies one logical channel in the data packet and its byte width.
-    const val CH_TIMESTAMP:   Int = 0x01  // 3 bytes, always first
-    const val CH_ACCEL_X:     Int = 0x02  // 2 bytes each (ADXL345 low-noise)
-    const val CH_ACCEL_Y:     Int = 0x03
-    const val CH_ACCEL_Z:     Int = 0x04
-    const val CH_VBATT:       Int = 0x05  // 2 bytes
-    const val CH_GYRO_X:      Int = 0x07  // 2 bytes each (MPU9150)
-    const val CH_GYRO_Y:      Int = 0x08
-    const val CH_GYRO_Z:      Int = 0x09
-    const val CH_MAG_X:       Int = 0x0A  // 2 bytes each (LSM303)
-    const val CH_MAG_Y:       Int = 0x0B
-    const val CH_MAG_Z:       Int = 0x0C
-    const val CH_EXG1_STATUS: Int = 0x0D  // 1 byte
-    const val CH_EXG1_CH1_24: Int = 0x0E  // 3 bytes
-    const val CH_EXG1_CH2_24: Int = 0x0F  // 3 bytes
-    const val CH_EXG2_STATUS: Int = 0x10  // 1 byte
-    const val CH_EXG2_CH1_24: Int = 0x11  // 3 bytes
-    const val CH_EXG2_CH2_24: Int = 0x12  // 3 bytes
-    const val CH_GSR:         Int = 0x1D  // 2 bytes
-    const val CH_EXP_A0:      Int = 0x13  // 2 bytes (PPG on GSR+)
-    const val CH_EXP_A7:      Int = 0x14  // 2 bytes
-    const val CH_DACCEL_X:    Int = 0x1C  // 2 bytes (LSM303 digital accel)
-    const val CH_DACCEL_Y:    Int = 0x1D
-    const val CH_DACCEL_Z:    Int = 0x1E
-    const val CH_EXG1_CH1_16: Int = 0x1F  // 2 bytes (16-bit ExG modes)
-    const val CH_EXG1_CH2_16: Int = 0x20
-    const val CH_EXG2_CH1_16: Int = 0x21
-    const val CH_EXG2_CH2_16: Int = 0x22
+    // ─── Channel type codes — Shimmer3 BT protocol (verified against SDK source) ──
+    // Ref: ShimmerAndroidInstrumentDriver / DataObject.java / shimmer3 firmware
+    const val CH_TIMESTAMP:      Int = 0x01  // 3 bytes, always first
+    // ADXL345 low-noise accelerometer (LN)
+    const val CH_ACCEL_X:        Int = 0x02  // 2 bytes each
+    const val CH_ACCEL_Y:        Int = 0x03
+    const val CH_ACCEL_Z:        Int = 0x04
+    const val CH_VBATT:          Int = 0x05  // 2 bytes
+    // LSM303DLHC wide-range accelerometer (WR / digital accel)
+    const val CH_DACCEL_X:       Int = 0x06  // 2 bytes each
+    const val CH_DACCEL_Y:       Int = 0x07
+    const val CH_DACCEL_Z:       Int = 0x08
+    // LSM303DLHC magnetometer
+    const val CH_MAG_X:          Int = 0x09  // 2 bytes each
+    const val CH_MAG_Y:          Int = 0x0A
+    const val CH_MAG_Z:          Int = 0x0B
+    // MPU9150 gyroscope
+    const val CH_GYRO_X:         Int = 0x0C  // 2 bytes each
+    const val CH_GYRO_Y:         Int = 0x0D
+    const val CH_GYRO_Z:         Int = 0x0E
+    // ADS1292 ExG chip 1 — 24-bit mode
+    const val CH_EXG1_STATUS:    Int = 0x0F  // 1 byte
+    const val CH_EXG1_CH1_24:   Int = 0x10  // 3 bytes
+    const val CH_EXG1_CH2_24:   Int = 0x11  // 3 bytes
+    // ADS1292 ExG chip 2 — 24-bit mode
+    const val CH_EXG2_STATUS:    Int = 0x12  // 1 byte
+    const val CH_EXG2_CH1_24:   Int = 0x13  // 3 bytes
+    const val CH_EXG2_CH2_24:   Int = 0x14  // 3 bytes
+    // GSR+ board channels
+    const val CH_GSR:            Int = 0x15  // 2 bytes — galvanic skin response
+    const val CH_EXP_A7:         Int = 0x16  // 2 bytes — expansion ADC A7
+    const val CH_EXP_A0:         Int = 0x17  // 2 bytes — expansion ADC A0 (PPG)
+    const val CH_EXP_A6:         Int = 0x18  // 2 bytes — expansion ADC A6
+    // Bridge amplifier
+    const val CH_BRIDGE_HIGH:    Int = 0x1A  // 2 bytes
+    const val CH_BRIDGE_LOW:     Int = 0x1B  // 2 bytes
+    // Heart rate (3 bytes: 1 status + 2 data)
+    const val CH_HEART_RATE:     Int = 0x1C  // 3 bytes
+    // ADS1292 ExG — 16-bit mode
+    const val CH_EXG1_CH1_16:   Int = 0x1D  // 2 bytes
+    const val CH_EXG1_CH2_16:   Int = 0x1E  // 2 bytes
+    const val CH_EXG2_CH1_16:   Int = 0x1F  // 2 bytes
+    const val CH_EXG2_CH2_16:   Int = 0x20  // 2 bytes
+    const val CH_EXG1_STATUS_16: Int = 0x21  // 1 byte
+    const val CH_EXG2_STATUS_16: Int = 0x22  // 1 byte
 
-    /** Byte width of each channel type code. Unknown codes return 2 (safe default). */
+    /** Byte width of each channel type code. Unknown codes default to 2 (safe). */
     fun channelWidth(code: Int): Int = when (code) {
-        CH_TIMESTAMP   -> 3
-        CH_EXG1_STATUS, CH_EXG2_STATUS -> 1
-        CH_EXG1_CH1_24, CH_EXG1_CH2_24, CH_EXG2_CH1_24, CH_EXG2_CH2_24 -> 3
-        else -> 2  // most channels are 2 bytes (accel, gyro, mag, GSR, PPG, battery)
+        CH_TIMESTAMP                                                        -> 3
+        CH_EXG1_STATUS, CH_EXG2_STATUS,
+        CH_EXG1_STATUS_16, CH_EXG2_STATUS_16                               -> 1
+        CH_EXG1_CH1_24, CH_EXG1_CH2_24,
+        CH_EXG2_CH1_24, CH_EXG2_CH2_24, CH_HEART_RATE                      -> 3
+        else                                                                -> 2
     }
 
     /** Compute exact packet data size from a list of channel codes (includes timestamp). */
@@ -217,16 +235,22 @@ object ShimmerPacketParser {
                 ShimmerProtocol.CH_GSR     -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
                 ShimmerProtocol.CH_EXP_A0  -> result["ppg_mv"] = calParams.calibratePpg(readAdc12())
                 ShimmerProtocol.CH_EXP_A7  -> result["ch_a7"] = readAdc12().toDouble()
-                ShimmerProtocol.CH_EXG1_STATUS -> { if (remaining() > 0) offset++ }
+                ShimmerProtocol.CH_EXG1_STATUS,
+                ShimmerProtocol.CH_EXG1_STATUS_16 -> { if (remaining() > 0) offset++ }
                 ShimmerProtocol.CH_EXG1_CH1_24 -> result["exg1_ch1"] = calParams.calibrateExG(readI24BE())
                 ShimmerProtocol.CH_EXG1_CH2_24 -> result["exg1_ch2"] = calParams.calibrateExG(readI24BE())
-                ShimmerProtocol.CH_EXG2_STATUS -> { if (remaining() > 0) offset++ }
+                ShimmerProtocol.CH_EXG2_STATUS,
+                ShimmerProtocol.CH_EXG2_STATUS_16 -> { if (remaining() > 0) offset++ }
                 ShimmerProtocol.CH_EXG2_CH1_24 -> result["exg2_ch1"] = calParams.calibrateExG(readI24BE())
                 ShimmerProtocol.CH_EXG2_CH2_24 -> result["exg2_ch2"] = calParams.calibrateExG(readI24BE())
                 ShimmerProtocol.CH_EXG1_CH1_16 -> result["exg1_ch1"] = calParams.calibrateExG16(readI16())
                 ShimmerProtocol.CH_EXG1_CH2_16 -> result["exg1_ch2"] = calParams.calibrateExG16(readI16())
                 ShimmerProtocol.CH_EXG2_CH1_16 -> result["exg2_ch1"] = calParams.calibrateExG16(readI16())
                 ShimmerProtocol.CH_EXG2_CH2_16 -> result["exg2_ch2"] = calParams.calibrateExG16(readI16())
+                ShimmerProtocol.CH_EXP_A6       -> { readU16() }  // consume, not modelled
+                ShimmerProtocol.CH_BRIDGE_HIGH  -> { readU16() }
+                ShimmerProtocol.CH_BRIDGE_LOW   -> { readU16() }
+                ShimmerProtocol.CH_HEART_RATE   -> { readI24BE() }  // 3 bytes, consume
                 ShimmerProtocol.CH_DACCEL_X -> {
                     val v = readI16()
                     if ("accel_x" !in result) result["accel_x"] = calParams.calibrateAccel(v, 0)

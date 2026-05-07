@@ -227,9 +227,13 @@ fun LiveChartCard(
                     }
                 },
                 update = { chart ->
-                    if (samples.isEmpty() || signals.isEmpty()) return@AndroidView
+                    if (samples.isEmpty() || signals.isEmpty()) {
+                        chart.data = null
+                        chart.invalidate()
+                        return@AndroidView
+                    }
 
-                    // Use real timestamps: X = seconds since first sample in the buffer
+                    // X = seconds since first sample in the buffer
                     val t0 = samples.first().timestampMs
 
                     val dataSets = signals.mapIndexed { idx, sig ->
@@ -245,13 +249,21 @@ fun LiveChartCard(
                             setDrawCircles(false)
                             setDrawValues(false)
                             lineWidth = 1.5f
-                            mode = LineDataSet.Mode.LINEAR   // LINEAR is faster than CUBIC for live data
+                            mode = LineDataSet.Mode.LINEAR
                         }
                     }.filterNotNull()
 
-                    if (dataSets.isEmpty()) return@AndroidView
+                    if (dataSets.isEmpty()) {
+                        chart.data = null
+                        chart.invalidate()
+                        return@AndroidView
+                    }
+
+                    val prevCount = chart.data?.dataSetCount ?: 0
                     chart.data = LineData(dataSets)
                     chart.notifyDataSetChanged()
+                    // Reset viewport if signal count changed (selection changed)
+                    if (dataSets.size != prevCount) chart.fitScreen()
                     chart.invalidate()
                 }
             )
