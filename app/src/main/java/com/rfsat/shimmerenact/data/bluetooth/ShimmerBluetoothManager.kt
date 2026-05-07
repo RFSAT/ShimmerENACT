@@ -131,19 +131,17 @@ class ShimmerBluetoothManager(private val context: Context) {
                 AppLog.i("BT", "Setting hardware rate: ${config.hardwareRateHz} Hz…")
                 val rateCmd = ShimmerProtocol.buildRateCommand(config.hardwareRateHz)
                 sendCommand(rateCmd)
-                val rateAck = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
-                if (rateAck != null && rateAck.isNotEmpty() && rateAck[0] == ShimmerProtocol.ACK) {
-                    AppLog.ok("BT", "Rate ACK received — hardware running at ${config.hardwareRateHz} Hz")
+                if (readAckWithTimeout(500L)) {
+                    AppLog.ok("BT", "Rate ACK received — ${config.hardwareRateHz} Hz")
                 } else {
-                    AppLog.w("BT", "No ACK for rate command (${rateAck?.size ?: 0}B) — continuing anyway")
+                    AppLog.w("BT", "No rate ACK — continuing anyway")
                 }
 
-                // Drain any residual bytes in the BT buffer before starting stream
-                drainInputBuffer()
-
-                AppLog.i("BT", "Sending START_STREAMING (0x${"%02X".format(ShimmerProtocol.CMD_START_STREAMING.toInt() and 0xFF)})…")
+                AppLog.i("BT", "Sending START_STREAMING…")
                 sendCommand(byteArrayOf(ShimmerProtocol.CMD_START_STREAMING))
-                AppLog.ok("BT", "Streaming command sent — waiting for data packets…")
+                // Discard the ACK byte (0xFF) that the device sends for every command
+                readAckWithTimeout(1000L)
+                AppLog.ok("BT", "Streaming started — listening for data packets…")
 
                 startStreamLoop(config)
 
@@ -181,18 +179,21 @@ class ShimmerBluetoothManager(private val context: Context) {
 
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
+
+        // The Shimmer3 sends 0xFF ACK immediately, then the inquiry response body.
+        // Read the ACK first so readResponseWithTimeout gets a clean response start.
+        readAckWithTimeout(1000L)
+
         val response = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
 
         // Inquiry response layout:
         //   [0] = 0xFF (ACK)
-        //   [1] = 0x02 (INQUIRY_RESPONSE)
-        //   [2] = rate LSB
-        //   [3] = rate MSB
-        //   [4] = sensor bitmap byte 0
-        //   [5] = sensor bitmap byte 1
-        //   [6] = sensor bitmap byte 2
-        //   [7] = num channels
-        //   [8+] = channel types
+        //   [0] = 0x02 (INQUIRY_RESPONSE) — ACK already consumed
+        //   [1] = rate LSB
+        //   [2] = rate MSB
+        //   [3] = sensor bitmap byte 0
+        //   [6] = num channels
+        //   [7+] = channel types
 
         if (response != null && response.size >= ShimmerProtocol.INQUIRY_MIN_LEN) {
             val bitmapOffset = ShimmerProtocol.INQUIRY_BITMAP_OFFSET
@@ -201,9 +202,8 @@ class ShimmerBluetoothManager(private val context: Context) {
             sensorBitmap[2] = response[bitmapOffset + 2].toInt() and 0xFF
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
 
-            // Also read back the actual sampling rate the device confirmed
-            val regLo  = response[2].toInt() and 0xFF
-            val regHi  = response[3].toInt() and 0xFF
+            val regLo  = response[1].toInt() and 0xFF
+            val regHi  = response[2].toInt() and 0xFF
             val regVal = regLo or (regHi shl 8)
             val actualHz = ShimmerProtocol.registerToHz(regVal)
 
@@ -249,12 +249,21 @@ class ShimmerBluetoothManager(private val context: Context) {
             ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0, 0, 0)
     }
 
-    // Reads a Shimmer3 response robustly using blocking reads.
-    // available() on BluetoothSocket InputStream is unreliable — it returns 0
-    // even when more data is buffered in the BT stack. Instead we:
-    //   1. Block-read until we have the first 8 bytes (header + channel count)
-    //   2. Read exactly numChannels more bytes for the channel list
-    // A separate 50ms SO_TIMEOUT equivalent is simulated via withTimeoutOrNull.
+    // ── Read a simple 1-byte ACK from a command response ─────────────────────
+    // Most commands get a single 0xFF ACK byte. Reading this quickly is critical
+    // because the Shimmer3 may time out if the host doesn't proceed promptly.
+    private suspend fun readAckWithTimeout(timeoutMs: Long = 500L): Boolean =
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(timeoutMs) {
+                val stream = inputStream ?: return@withTimeoutOrNull false
+                val b = try { stream.read() } catch (_: Exception) { return@withTimeoutOrNull false }
+                b == (ShimmerProtocol.ACK.toInt() and 0xFF)
+            } ?: false
+        }
+
+    // ── Read a Shimmer3 inquiry response robustly ─────────────────────────────
+    // The inquiry response has a variable length (header + channel codes).
+    // We read the 8-byte header first, then read exactly numChannels more bytes.
     private suspend fun readResponseWithTimeout(timeoutMs: Long): ByteArray? =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {

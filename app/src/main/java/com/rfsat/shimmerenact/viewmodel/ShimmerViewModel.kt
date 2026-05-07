@@ -122,11 +122,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     private var spsCount = 0
 
     init {
-        observeConnectionState()
-        observeSamples()
-        observeErrors()
-        loadPrefs()
-        loadSessions()
+        try {
+            observeConnectionState()
+            observeSamples()
+            observeErrors()
+            loadPrefs()
+            loadSessions()
+        } catch (e: Exception) {
+            AppLog.e("VM", "Init error: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     private fun observeConnectionState() {

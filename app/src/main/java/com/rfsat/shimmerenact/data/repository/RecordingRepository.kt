@@ -227,9 +227,11 @@ class RecordingRepository(private val context: Context) {
         File(path).delete()
     }
 
-    private fun getRootDir(): File =
-        File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "ShimmerENACT")
-            .also { if (!it.exists()) it.mkdirs() }
+    private fun getRootDir(): File {
+        val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+            ?: context.filesDir   // fall back to internal storage if external not available
+        return File(extDir, "ShimmerENACT").also { if (!it.exists()) it.mkdirs() }
+    }
 }
 
 // ─── Data classes ─────────────────────────────────────────────────────────────
