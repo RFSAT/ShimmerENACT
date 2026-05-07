@@ -42,7 +42,8 @@ fun DashboardScreen(
     val recordingState by viewModel.recordingState.collectAsState()
     val activeConfig by viewModel.activeConfig.collectAsState()
 
-    val signals = remember(activeConfig.sensorType) { signalsForType(activeConfig.sensorType) }
+    val signals         = remember(activeConfig.sensorType) { signalsForType(activeConfig.sensorType) }
+    val supportedKeys   by viewModel.supportedSignalKeys.collectAsState()
 
     // Chart signal selection — show first 4 by default
     var selectedChartSignals by remember(signals) {
