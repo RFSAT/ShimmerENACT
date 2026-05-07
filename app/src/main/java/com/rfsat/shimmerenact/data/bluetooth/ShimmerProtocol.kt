@@ -266,14 +266,14 @@ object ShimmerPacketParser {
                 else -> {
                     val w = ShimmerProtocol.channelWidth(ch)
                     offset += minOf(w, remaining())
-                    AppLog.d("PKT", "Unknown channel 0x%02X width=$w".format(ch))
+                    AppLog.i("PKT", "UNHANDLED channel 0x%02X (width=$w, offset now=$offset/${raw.size})".format(ch))
                 }
             }
         }
+        if (result.isEmpty()) {
+            AppLog.w("PKT", "Channel-list parse produced EMPTY result from ${raw.size}B, ${channels.size} channels")
+        }
         return result
-    }
-
-    // ── Bitmap-based parser (fallback) ─────────────────────────────────────────
     private fun parseByBitmap(
         raw: ByteArray,
         sensorBitmap: IntArray,

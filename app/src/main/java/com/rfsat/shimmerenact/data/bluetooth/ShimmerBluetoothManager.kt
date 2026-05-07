@@ -312,7 +312,9 @@ class ShimmerBluetoothManager(private val context: Context) {
         streamJob = scope.launch {
             val inStream = inputStream ?: run { AppLog.e("BT", "InputStream null — aborting stream loop"); return@launch }
             var consecutiveErrors = 0
-            AppLog.d("BT", "Stream loop started — expected packet size: ${estimatePacketSize()} bytes")
+            val pktSize = estimatePacketSize()
+            AppLog.i("BT", "Stream started — pkt=${pktSize}B, channels(${channelList.size}): " +
+                channelList.joinToString { "0x%02X".format(it) })
             val packetBuf = ByteArray(256)
 
             while (isActive && _connectionState.value == ConnectionState.CONNECTED) {
@@ -336,7 +338,16 @@ class ShimmerBluetoothManager(private val context: Context) {
 
                     val rawValues = ShimmerPacketParser.parse(
                         packetBuf.copyOf(bytesRead), sensorBitmap, calParams, channelList)
-                    if (rawValues.isEmpty()) continue
+
+                    if (rawValues.isEmpty()) {
+                        if (totalPackets == 0L) {
+                            AppLog.w("BT", "Parse empty — ${bytesRead}B packet, channels=${channelList.size}, bitmap=0x%02X 0x%02X".format(sensorBitmap[0], sensorBitmap[1]))
+                            AppLog.i("BT", "Channels: " + channelList.joinToString { "0x%02X".format(it) })
+                            AppLog.i("BT", "Raw bytes: " + packetBuf.copyOfRange(0, minOf(bytesRead, 24))
+                                .joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+                        }
+                        continue
+                    }
 
                     totalPackets++; meterCount++; consecutiveErrors = 0
 
