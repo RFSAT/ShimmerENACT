@@ -100,6 +100,9 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             val defined = signalsForType(_activeSensorType.value).map { it.key }.toSet()
             keys.intersect(defined)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    // ─── Paired / discovered devices ─────────────────────────────────────────
+    val pairedDevices: StateFlow<List<BtDeviceInfo>> = flow {
         emit(btManager.getPairedDevices())
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
