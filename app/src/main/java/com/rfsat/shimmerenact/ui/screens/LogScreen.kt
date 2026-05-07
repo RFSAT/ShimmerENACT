@@ -225,7 +225,8 @@ fun LogScreen(onBack: () -> Unit) {
                     modifier = Modifier.size(20.dp))
             }
         }
-    }
+    }   // Box
+    }   // Scaffold
 }
 
 // ─── Single log row ───────────────────────────────────────────────────────────
