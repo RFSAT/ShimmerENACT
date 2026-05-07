@@ -37,10 +37,15 @@ fun SamplingRateScreen(
     val activeType by viewModel.activeSensorType.collectAsState()
     val config     by viewModel.activeConfig.collectAsState()
     val signals    = remember(activeType) { signalsForType(activeType) }
+    val supportedKeys by viewModel.supportedSignalKeys.collectAsState()
+    val visibleSignals = remember(signals, supportedKeys) {
+        if (supportedKeys.isEmpty()) signals
+        else signals.filter { it.key in supportedKeys }
+    }
     val focusManager = LocalFocusManager.current
 
     // Group signals by sensor subsystem for cleaner presentation
-    val groups = remember(signals) { groupSignals(signals) }
+    val groups = remember(visibleSignals) { groupSignals(visibleSignals) }
 
     var showResetDialog by remember { mutableStateOf(false) }
 

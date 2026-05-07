@@ -45,9 +45,16 @@ fun DashboardScreen(
     val signals         = remember(activeConfig.sensorType) { signalsForType(activeConfig.sensorType) }
     val supportedKeys   by viewModel.supportedSignalKeys.collectAsState()
 
-    // Chart signal selection — show first 4 by default
-    var selectedChartSignals by remember(signals) {
-        mutableStateOf(signals.take(4).map { it.key }.toSet())
+    // When connected, only show signals the device actually supports.
+    // When not connected (supportedKeys empty), show all signals for the sensor type.
+    val visibleSignals = remember(signals, supportedKeys) {
+        if (supportedKeys.isEmpty()) signals          // not yet connected — show all
+        else signals.filter { it.key in supportedKeys }
+    }
+
+    // Chart signal selection — initialise to first 4 visible signals
+    var selectedChartSignals by remember(visibleSignals) {
+        mutableStateOf(visibleSignals.take(4).map { it.key }.toSet())
     }
     var showSignalSelector by remember { mutableStateOf(false) }
     var showChart by remember { mutableStateOf(true) }
@@ -121,14 +128,14 @@ fun DashboardScreen(
                 item {
                     LiveChartCard(
                         samples = uiState.recentSamples,
-                        signals = signals.filter { it.key in selectedChartSignals },
+                        signals = visibleSignals.filter { it.key in selectedChartSignals },
                         onSelectSignals = { showSignalSelector = true }
                     )
                 }
             }
 
-            // Signal gauge cards — two per row
-            val chunked = signals.chunked(2)
+            // Signal gauge cards — two per row, only supported signals
+            val chunked = visibleSignals.chunked(2)
             items(chunked) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     pair.forEach { sig ->
@@ -138,7 +145,6 @@ fun DashboardScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    // Fill remaining space if odd signal
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
@@ -148,9 +154,9 @@ fun DashboardScreen(
     // Signal selector sheet
     if (showSignalSelector) {
         SignalSelectorSheet(
-            signals = signals,
+            signals = visibleSignals,
             selected = selectedChartSignals,
-            supportedKeys = supportedKeys,
+            supportedKeys = emptySet(),   // already filtered — all listed signals are supported
             onDismiss = { showSignalSelector = false },
             onConfirm = { selectedChartSignals = it; showSignalSelector = false }
         )
@@ -484,11 +490,17 @@ fun RecordingSetupSheet(
     val activeType by viewModel.activeSensorType.collectAsState()
     val config     by viewModel.activeConfig.collectAsState()
     val allSignals  = remember(activeType) { signalsForType(activeType) }
-
-    // Local copy of selection so user can cancel without committing
     val supportedKeysRec by viewModel.supportedSignalKeys.collectAsState()
-    var localSelection by remember(config) {
-        mutableStateOf(config.resolvedRecordingSignals(allSignals))
+
+    // Only offer signals the connected device actually supports;
+    // if not yet connected show all.
+    val availableSignals = remember(allSignals, supportedKeysRec) {
+        if (supportedKeysRec.isEmpty()) allSignals
+        else allSignals.filter { it.key in supportedKeysRec }
+    }
+
+    var localSelection by remember(config, availableSignals) {
+        mutableStateOf(config.resolvedRecordingSignals(availableSignals))
     }
 
     ModalBottomSheet(
@@ -511,11 +523,11 @@ fun RecordingSetupSheet(
                 Spacer(Modifier.weight(1f))
                 // Select all / none
                 TextButton(onClick = {
-                    localSelection = if (localSelection.size == allSignals.size) emptySet()
-                    else allSignals.map { it.key }.toSet()
+                    localSelection = if (localSelection.size == availableSignals.size) emptySet()
+                    else availableSignals.map { it.key }.toSet()
                 }) {
                     Text(
-                        if (localSelection.size == allSignals.size) "None" else "All",
+                        if (localSelection.size == availableSignals.size) "None" else "All",
                         color = EnactGreen, fontSize = 12.sp
                     )
                 }
@@ -528,11 +540,10 @@ fun RecordingSetupSheet(
             )
 
             // Signal list with per-signal rate display
-            allSignals.forEach { sig ->
+            availableSignals.forEach { sig ->
                 val isSelected = sig.key in localSelection
                 val accentColor = Color(sig.color)
                 val rateHz = config.effectiveRateHz(sig.key, sig.rateConstraints)
-                val isSupported = supportedKeysRec.isEmpty() || sig.key in supportedKeysRec
                 val decimFactor = if (config.hardwareRateHz > 0 && rateHz > 0)
                     config.hardwareRateHz / rateHz else 1
 
@@ -544,7 +555,7 @@ fun RecordingSetupSheet(
                             if (isSelected) accentColor.copy(alpha = 0.08f)
                             else Color.Transparent
                         )
-                        .clickable(enabled = isSupported) {
+                        .clickable {
                             localSelection = if (isSelected) localSelection - sig.key
                             else localSelection + sig.key
                         }
@@ -566,12 +577,9 @@ fun RecordingSetupSheet(
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(sig.displayName,
-                            color = if (isSupported) EnactOnSurface else EnactOnSurface.copy(alpha = 0.3f),
-                            fontSize = 13.sp)
-                        Text(if (isSupported) sig.unit else "not available",
-                            fontSize = 10.sp,
-                            color = if (isSupported) EnactOnSurface.copy(alpha = 0.4f) else EnactOnSurface.copy(alpha = 0.25f))
+                        Text(sig.displayName, color = EnactOnSurface, fontSize = 13.sp)
+                        Text(sig.unit, fontSize = 10.sp,
+                            color = EnactOnSurface.copy(alpha = 0.4f))
                     }
                     // Rate badge
                     Column(horizontalAlignment = Alignment.End) {
@@ -596,7 +604,7 @@ fun RecordingSetupSheet(
 
             // Summary line
             val totalHz = localSelection.sumOf { key ->
-                val sig = allSignals.find { it.key == key }
+                val sig = availableSignals.find { it.key == key }
                 if (sig != null) config.effectiveRateHz(key, sig.rateConstraints).toLong() else 0L
             }
             Row(
@@ -611,7 +619,7 @@ fun RecordingSetupSheet(
                     modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "${localSelection.size} of ${allSignals.size} signals  •  " +
+                    "${localSelection.size} of ${availableSignals.size} signals  •  " +
                     "hw: ${config.hardwareRateHz} Hz  •  " +
                     "~$totalHz rows/s total",
                     fontSize = 11.sp, color = EnactOnSurfaceDim
