@@ -274,6 +274,9 @@ object ShimmerPacketParser {
             AppLog.w("PKT", "Channel-list parse produced EMPTY result from ${raw.size}B, ${channels.size} channels")
         }
         return result
+    }
+
+    // ── Bitmap-based parser (fallback) ─────────────────────────────────────────
     private fun parseByBitmap(
         raw: ByteArray,
         sensorBitmap: IntArray,
