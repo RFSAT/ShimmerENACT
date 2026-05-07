@@ -264,15 +264,12 @@ object ShimmerPacketParser {
                     if ("accel_z" !in result) result["accel_z"] = calParams.calibrateAccel(v, 2)
                 }
                 else -> {
-                    // Unknown channel — skip by width
                     val w = ShimmerProtocol.channelWidth(ch)
                     offset += minOf(w, remaining())
-                    AppLog.d("PKT", "Unknown channel code 0x%02X width=$w".format(ch))
+                    AppLog.d("PKT", "Unknown channel 0x%02X width=$w".format(ch))
                 }
             }
         }
-
-        AppLog.d("PKT_V", "channel-list parse: ${result.size} signals, consumed $offset/${raw.size}B")
         return result
     }
 
@@ -305,7 +302,6 @@ object ShimmerPacketParser {
         }
 
         val b0 = sensorBitmap[0]; val b1 = sensorBitmap[1]; val b2 = sensorBitmap[2]
-        AppLog.d("PKT_V", "bitmap parse: ${raw.size}B, 0x%02X 0x%02X 0x%02X".format(b0, b1, b2))
 
         if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0) {
             result["accel_x"] = calParams.calibrateAccel(readI16(), 0)

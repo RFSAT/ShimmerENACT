@@ -28,6 +28,7 @@ import com.rfsat.shimmerenact.data.repository.AppLog
 import com.rfsat.shimmerenact.data.repository.LogEntry
 import com.rfsat.shimmerenact.data.repository.LogLevel
 import com.rfsat.shimmerenact.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,9 +49,18 @@ fun LogScreen(onBack: () -> Unit) {
 
     val listState = rememberLazyListState()
 
-    // Auto-scroll to bottom on new entries
+    // Auto-scroll to bottom only when user hasn't scrolled up manually
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val totalItems = layoutInfo.totalItemsCount
+            totalItems == 0 || lastVisible >= totalItems - 2
+        }
+    }
+
     LaunchedEffect(filtered.size) {
-        if (filtered.isNotEmpty()) {
+        if (filtered.isNotEmpty() && isAtBottom) {
             listState.animateScrollToItem(filtered.size - 1)
         }
     }
@@ -103,7 +113,8 @@ fun LogScreen(onBack: () -> Unit) {
         containerColor = EnactDark
     ) { padding ->
 
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
 
             // ── Filter bar ────────────────────────────────────────────────────
             Row(
@@ -192,6 +203,26 @@ fun LogScreen(onBack: () -> Unit) {
                         LogEntryRow(entry = entry, context = context)
                     }
                 }
+            }
+        }
+
+        // "Jump to bottom" button — visible when scrolled up
+        if (!isAtBottom && filtered.isNotEmpty()) {
+            val coroutineScope = rememberCoroutineScope()
+            SmallFloatingActionButton(
+                onClick = {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(filtered.size - 1)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                containerColor = EnactGreen,
+                contentColor = EnactDark
+            ) {
+                Icon(Icons.Default.KeyboardArrowDown, "Scroll to bottom",
+                    modifier = Modifier.size(20.dp))
             }
         }
     }

@@ -236,7 +236,8 @@ class ShimmerBluetoothManager(private val context: Context) {
     private fun defaultBitmapForType(type: SensorType): IntArray = when (type) {
         SensorType.GSR_PLUS -> intArrayOf(
             ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
-            ShimmerProtocol.SENSOR_GSR or ShimmerProtocol.SENSOR_EXP_BOARD_A0,
+            ShimmerProtocol.SENSOR_MAG or ShimmerProtocol.SENSOR_GSR or
+            ShimmerProtocol.SENSOR_EXP_BOARD_A0,
             ShimmerProtocol.SENSOR_VBATT,   // byte1: 0x20
             0)
         SensorType.EXG -> intArrayOf(
@@ -248,30 +249,43 @@ class ShimmerBluetoothManager(private val context: Context) {
             ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0, 0, 0)
     }
 
-    // Reads a response from the Shimmer3. The device sends ACK (0xFF) first, then
-    // the actual response payload — sometimes in one read, sometimes split across two.
-    // We accumulate bytes until no more arrive within a short idle window.
+    // Reads a Shimmer3 inquiry response robustly.
+    // The device sends: ACK(1) + response-code(1) + rate(2) + bitmap(3) + n_channels(1) + channel_codes(n)
+    // These often arrive as 2-3 separate BT fragments. We keep reading until:
+    //  (a) we have at least 8 bytes and have received all n channel codes, OR
+    //  (b) the deadline expires.
     private suspend fun readResponseWithTimeout(timeoutMs: Long): ByteArray? =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
                 val buf = ByteArray(256)
                 var total = 0
                 val deadline = System.currentTimeMillis() + timeoutMs
+
                 while (System.currentTimeMillis() < deadline && total < buf.size) {
                     val stream = inputStream ?: break
+
+                    // Try to read whatever is available, or block briefly for first bytes
                     val avail = try { stream.available() } catch (_: Exception) { 0 }
                     if (avail > 0 || total == 0) {
-                        val n = try { stream.read(buf, total, buf.size - total) } catch (_: Exception) { -1 }
+                        val n = try {
+                            stream.read(buf, total, (buf.size - total).coerceAtLeast(1))
+                        } catch (_: Exception) { -1 }
                         if (n <= 0) break
                         total += n
-                        // Brief wait to see if more data follows
-                        if (total >= 2) {
-                            kotlinx.coroutines.delay(30)
-                            val more = try { stream.available() } catch (_: Exception) { 0 }
-                            if (more == 0) break
-                        }
                     } else {
-                        kotlinx.coroutines.delay(10)
+                        kotlinx.coroutines.delay(5)
+                        continue
+                    }
+
+                    // Once we have ≥ 8 bytes we know how many channel codes to expect
+                    if (total >= ShimmerProtocol.INQUIRY_MIN_LEN) {
+                        val expectedChannels = buf[ShimmerProtocol.INQUIRY_CHANNELS_OFFSET].toInt() and 0xFF
+                        val expectedTotal = ShimmerProtocol.INQUIRY_CHANNELS_OFFSET + 1 + expectedChannels
+                        if (total >= expectedTotal) break  // got everything
+                        // Still waiting for channel codes — continue reading
+                        kotlinx.coroutines.delay(5)
+                    } else {
+                        kotlinx.coroutines.delay(5)
                     }
                 }
                 if (total > 0) buf.copyOf(total) else null
