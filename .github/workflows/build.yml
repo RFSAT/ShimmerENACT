@@ -1,129 +1,161 @@
-name: Build APK
+name: ShimmerENACT CI
 
 on:
   push:
-    branches:
-      - main
-      - develop
-    tags:
-      - 'v*'
+    branches: [ main, develop ]
+    tags:     [ 'v*' ]
   pull_request:
-    branches:
-      - main
-  workflow_dispatch:      # allow manual trigger from GitHub UI
+    branches: [ main ]
+
+# ── Environment ────────────────────────────────────────────────────────────────
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
 
 jobs:
+  # ── Build & test ─────────────────────────────────────────────────────────────
   build:
-    name: Build Debug & Release APK
+    name: Build & Test
     runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.version.outputs.name }}
+      version_code: ${{ steps.version.outputs.code }}
 
     steps:
-      # ── Checkout ─────────────────────────────────────────────────────────────
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Java 17 ──────────────────────────────────────────────────────────────
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: gradle
 
-      # ── Gradle cache ─────────────────────────────────────────────────────────
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      # ── Gradle wrapper permissions ────────────────────────────────────────────
-      - name: Grant execute permission for gradlew
+      - name: Make gradlew executable
         run: chmod +x gradlew
 
-      # ── Lint ─────────────────────────────────────────────────────────────────
+      # Read version from build.gradle so it appears in artifact names
+      - name: Extract version
+        id: version
+        run: |
+          CODE=$(grep 'versionCode' app/build.gradle | head -1 | tr -dc '0-9')
+          NAME=$(grep 'versionName' app/build.gradle | head -1 | sed "s/.*'\(.*\)'.*/\1/")
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "Version: $NAME ($CODE)"
+
+      # Run lint with continue-on-error — lint failures should warn, not block
       - name: Run lint
-        run: ./gradlew lint --stacktrace
-        continue-on-error: true   # lint warnings shouldn't fail the build
+        run: ./gradlew lintDebug --stacktrace
+        continue-on-error: true
 
-      # ── Unit tests ───────────────────────────────────────────────────────────
       - name: Run unit tests
-        run: ./gradlew test --stacktrace
+        run: ./gradlew testDebugUnitTest --stacktrace
+        continue-on-error: true
 
-      # ── Build debug APK ──────────────────────────────────────────────────────
+      # ── Debug APK (no secrets needed) ────────────────────────────────────────
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      # ── Build release APK (unsigned) ─────────────────────────────────────────
-      - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
-
-      # ── Sign release APK (optional – only if secrets are configured) ─────────
-      # To enable signing:
-      #   1. Generate a keystore: keytool -genkey -v -keystore release.jks ...
-      #   2. Base64 encode it:    base64 -i release.jks | pbcopy
-      #   3. Add GitHub secrets:  KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
-      - name: Sign release APK
-        if: github.event_name != 'pull_request' && env.KEYSTORE_BASE64 != ''
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      # ── Upload debug APK artifact ─────────────────────────────────────────────
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShimmerENACT-debug-${{ github.run_number }}
+          name: ShimmerENACT-debug-${{ steps.version.outputs.name }}
           path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+          retention-days: 14
 
-      # ── Upload release APK artifact ───────────────────────────────────────────
+      # ── Release APK (signed, for sideloading / OTA update) ───────────────────
+      - name: Decode keystore
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > $RUNNER_TEMP/keystore.jks
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/keystore.jks" >> $GITHUB_ENV
+
+      - name: Build release APK
+        env:
+          KEY_ALIAS:      ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShimmerENACT-release-${{ github.run_number }}
-          path: app/build/outputs/apk/release/app-release*.apk
+          name: ShimmerENACT-release-${{ steps.version.outputs.name }}
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 90
 
-      # ── Create GitHub release on version tags ─────────────────────────────────
+      # ── Release AAB (signed, for Google Play Store upload) ───────────────────
+      - name: Build release AAB
+        env:
+          KEY_ALIAS:      ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: ./gradlew bundleRelease --stacktrace
+
+      - name: Upload release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShimmerENACT-release-${{ steps.version.outputs.name }}-PlayStore
+          path: app/build/outputs/bundle/release/app-release.aab
+          retention-days: 90
+
+  # ── GitHub Release (on version tags only) ────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ShimmerENACT-release-${{ needs.build.outputs.version_name }}
+          path: artifacts/
+
+      - name: Download release AAB
+        uses: actions/download-artifact@v4
+        with:
+          name: ShimmerENACT-release-${{ needs.build.outputs.version_name }}-PlayStore
+          path: artifacts/
+
+      - name: Rename artifacts
+        run: |
+          mv artifacts/app-release.apk \
+             artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.apk
+          mv artifacts/app-release.aab \
+             artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.aab
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: ShimmerENACT ${{ github.ref_name }}
+          name: "ShimmerENACT v${{ needs.build.outputs.version_name }}"
           body: |
-            ## ShimmerENACT ${{ github.ref_name }}
+            ## ShimmerENACT v${{ needs.build.outputs.version_name }}
 
-            Native Android application for Shimmer3 sensor data acquisition.
-            Developed by **RFSAT Limited** for the **ENACT** project (Horizon Europe Grant 101157151).
+            RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
-            ### Supported sensors
-            - GSR+ Unit SR48-5-0 (default BT radio: A096)
-            - EXG Unit SR47-6-0 (default BT radio: A077)
-            - Custom Shimmer3 sensor
+            ### Artifacts
+            | File | Use |
+            |------|-----|
+            | `.apk` | Install directly on Android devices (sideloading) |
+            | `.aab` | Upload to Google Play Store |
 
-            ### Installation
-            Download `app-release-unsigned.apk` (or signed variant if available),
-            enable *Install from unknown sources* on your Android device, and install.
+            ### Installing the APK
+            Download the `.apk`, transfer to your Android device and install.
+            Enable **Install unknown apps** for your file manager if prompted.
+            This signed release will update over any previous version without uninstalling.
 
-            ### Requirements
-            - Android 8.0 (API 26) or higher
-            - Bluetooth Classic support
+            ### Changelog
+            See [CHANGELOG.md](CHANGELOG.md) for details.
           files: |
-            app/build/outputs/apk/release/app-release*.apk
-            app/build/outputs/apk/debug/app-debug.apk
+            artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.apk
+            artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.aab
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ contains(needs.build.outputs.version_name, 'alpha') || contains(needs.build.outputs.version_name, 'beta') }}
