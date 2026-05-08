@@ -52,9 +52,9 @@ fun DashboardScreen(
         else signals.filter { it.key in supportedKeys }
     }
 
-    // Chart signal selection — initialise to first 4 visible signals
+    // Chart signal selection — show first 6 by default (covers accel+gyro for GSR+)
     var selectedChartSignals by remember(visibleSignals) {
-        mutableStateOf(visibleSignals.take(4).map { it.key }.toSet())
+        mutableStateOf(visibleSignals.take(6).map { it.key }.toSet())
     }
     var showSignalSelector by remember { mutableStateOf(false) }
     var showChart by remember { mutableStateOf(true) }

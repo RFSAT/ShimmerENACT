@@ -77,6 +77,12 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         btManager.sensorBitmapFlow.map { bitmap ->
             if (bitmap.all { it == 0 }) return@map emptySet()
             val b0 = bitmap[0]; val b1 = bitmap[1]; val b2 = bitmap[2]
+            AppLog.i("VM", "Bitmap: 0x%02X 0x%02X 0x%02X  gyro=%s accel=%s gsr=%s ppg=%s".format(
+                b0, b1, b2,
+                if (b0 and ShimmerProtocol.SENSOR_GYRO != 0) "Y" else "N",
+                if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0) "Y" else "N",
+                if (b0 and ShimmerProtocol.SENSOR_GSR != 0) "Y" else "N",
+                if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0 != 0) "Y" else "N"))
             val keys = mutableSetOf<String>()
             if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0 ||
                 b1 and ShimmerProtocol.SENSOR_b1_D_ACCEL != 0)
