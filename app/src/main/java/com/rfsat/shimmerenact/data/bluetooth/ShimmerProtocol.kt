@@ -36,39 +36,38 @@ object ShimmerProtocol {
     const val SENSOR_EXG2_16BIT:    Int = SENSOR_b2_EXG2_16BIT
 
     // ─── Channel type codes ────────────────────────────────────────────────────
-    // From Shimmer3 LogAndStream firmware source (BtStream.c / shimmer3_bt.c)
-    // These are the actual bytes the device places in the inquiry response channel list.
-    const val CH_TIMESTAMP:      Int = 0x00  // 3 bytes — always first
-    const val CH_ACCEL_X:        Int = 0x02  // 2 bytes each (ADXL345 low-noise)
-    const val CH_ACCEL_Y:        Int = 0x03
-    const val CH_ACCEL_Z:        Int = 0x04
-    const val CH_GYRO_X:         Int = 0x05  // 2 bytes each (MPU9150)
-    const val CH_GYRO_Y:         Int = 0x06
-    const val CH_GYRO_Z:         Int = 0x07
-    const val CH_DACCEL_X:       Int = 0x08  // 2 bytes each (LSM303 wide-range)
-    const val CH_DACCEL_Y:       Int = 0x09
-    const val CH_DACCEL_Z:       Int = 0x0A
-    const val CH_VBATT:          Int = 0x0B  // 2 bytes
-    const val CH_GSR:            Int = 0x0C  // 2 bytes
-    const val CH_EXP_A0:         Int = 0x0D  // 2 bytes (PPG on GSR+ board)
-    const val CH_EXP_A7:         Int = 0x0E  // 2 bytes
-    const val CH_BRIDGE_HIGH:    Int = 0x0F  // 2 bytes
-    const val CH_BRIDGE_LOW:     Int = 0x10  // 2 bytes
-    const val CH_MAG_X:          Int = 0x11  // 2 bytes each (LSM303)
-    const val CH_MAG_Y:          Int = 0x12
-    const val CH_MAG_Z:          Int = 0x13
-    const val CH_EXG1_STATUS:    Int = 0x14  // 1 byte
-    const val CH_EXG1_CH1_24:    Int = 0x15  // 3 bytes each
-    const val CH_EXG1_CH2_24:    Int = 0x16
-    const val CH_EXG2_STATUS:    Int = 0x17  // 1 byte
-    const val CH_EXG2_CH1_24:    Int = 0x18  // 3 bytes each
-    const val CH_EXG2_CH2_24:    Int = 0x19
-    const val CH_EXG1_CH1_16:    Int = 0x1A  // 2 bytes each (16-bit ExG)
-    const val CH_EXG1_CH2_16:    Int = 0x1B
-    const val CH_EXG2_CH1_16:    Int = 0x1C
-    const val CH_EXG2_CH2_16:    Int = 0x1D
-    const val CH_EXG1_STATUS_16: Int = 0x1E  // 1 byte
-    const val CH_EXG2_STATUS_16: Int = 0x1F  // 1 byte
+    // Actual codes sent by Shimmer3 LogAndStream firmware in inquiry response.
+    // Verified by observing which codes produce working data vs "Unknown ch=0xNN".
+    // The firmware uses a simple sequential scheme starting from 0x00.
+    const val CH_TIMESTAMP:      Int = 0x00  // 3 bytes
+    const val CH_ACCEL_X:        Int = 0x01  // 2 bytes (ADXL345 low-noise)
+    const val CH_ACCEL_Y:        Int = 0x02
+    const val CH_ACCEL_Z:        Int = 0x03
+    const val CH_GYRO_X:         Int = 0x04  // 2 bytes (MPU9150)
+    const val CH_GYRO_Y:         Int = 0x05
+    const val CH_GYRO_Z:         Int = 0x06
+    const val CH_MAG_X:          Int = 0x07  // 2 bytes (LSM303)
+    const val CH_MAG_Y:          Int = 0x08
+    const val CH_MAG_Z:          Int = 0x09
+    const val CH_VBATT:          Int = 0x0A  // 2 bytes
+    const val CH_GSR:            Int = 0x0B  // 2 bytes
+    const val CH_EXP_A0:         Int = 0x0C  // 2 bytes (PPG)
+    const val CH_EXP_A7:         Int = 0x0D  // 2 bytes
+    const val CH_DACCEL_X:       Int = 0x0E  // 2 bytes (LSM303 wide-range/digital)
+    const val CH_DACCEL_Y:       Int = 0x0F
+    const val CH_DACCEL_Z:       Int = 0x10
+    const val CH_EXG1_STATUS:    Int = 0x11  // 1 byte
+    const val CH_EXG1_CH1_24:    Int = 0x12  // 3 bytes
+    const val CH_EXG1_CH2_24:    Int = 0x13
+    const val CH_EXG2_STATUS:    Int = 0x14  // 1 byte
+    const val CH_EXG2_CH1_24:    Int = 0x15  // 3 bytes
+    const val CH_EXG2_CH2_24:    Int = 0x16
+    const val CH_EXG1_CH1_16:    Int = 0x17  // 2 bytes (16-bit ExG)
+    const val CH_EXG1_CH2_16:    Int = 0x18
+    const val CH_EXG2_CH1_16:    Int = 0x19
+    const val CH_EXG2_CH2_16:    Int = 0x1A
+    const val CH_EXG1_STATUS_16: Int = 0x1B  // 1 byte
+    const val CH_EXG2_STATUS_16: Int = 0x1C  // 1 byte
 
     /** Width in bytes for each channel code. */
     fun channelWidth(code: Int): Int = when (code) {
