@@ -15,8 +15,7 @@ object ShimmerProtocol {
     const val INQUIRY_RESPONSE: Byte           = 0x02
     const val PACKET_TYPE_DATA: Byte           = 0x00
 
-    // ─── Sensor bitmap bits ────────────────────────────────────────────────────
-    // Byte 0 of the 3-byte sensor bitmap in the inquiry response:
+    // ─── Sensor bitmap bits (byte 0 of 3-byte bitmap) ─────────────────────────
     const val SENSOR_A_ACCEL:       Int = 0x80
     const val SENSOR_GYRO:          Int = 0x40
     const val SENSOR_MAG:           Int = 0x20
@@ -36,79 +35,56 @@ object ShimmerProtocol {
     const val SENSOR_EXG1_16BIT:    Int = SENSOR_b2_EXG1_16BIT
     const val SENSOR_EXG2_16BIT:    Int = SENSOR_b2_EXG2_16BIT
 
-    // ─── Inquiry response layout (parsed dynamically in runInquiry) ──────────
-    // May arrive as: [0xFF ACK][0x02 code][rate×2][bitmap×3][nch][codes...]
-    // or without ACK: [0x02 code][rate×2][bitmap×3][nch][codes...]
-    // bodyStart is detected by checking if response[0] == 0xFF
-    // These constants are kept for reference only:
-    const val INQUIRY_BITMAP_OFFSET:   Int = 3   // from body start (after 0x02 + rate×2)
-    const val INQUIRY_CHANNELS_OFFSET: Int = 6   // from body start
-    const val INQUIRY_MIN_LEN:         Int = 7   // minimum body bytes
-
-    // ─── Channel type codes — Shimmer3 BT protocol (verified against SDK source) ──
-    // Ref: ShimmerAndroidInstrumentDriver / DataObject.java / shimmer3 firmware
-    const val CH_TIMESTAMP:      Int = 0x01  // 3 bytes, always first
-    // ADXL345 low-noise accelerometer (LN)
-    const val CH_ACCEL_X:        Int = 0x02  // 2 bytes each
+    // ─── Channel type codes ────────────────────────────────────────────────────
+    // From Shimmer3 LogAndStream firmware source (BtStream.c / shimmer3_bt.c)
+    // These are the actual bytes the device places in the inquiry response channel list.
+    const val CH_TIMESTAMP:      Int = 0x00  // 3 bytes — always first
+    const val CH_ACCEL_X:        Int = 0x02  // 2 bytes each (ADXL345 low-noise)
     const val CH_ACCEL_Y:        Int = 0x03
     const val CH_ACCEL_Z:        Int = 0x04
-    const val CH_VBATT:          Int = 0x05  // 2 bytes
-    // LSM303DLHC wide-range accelerometer (WR / digital accel)
-    const val CH_DACCEL_X:       Int = 0x06  // 2 bytes each
-    const val CH_DACCEL_Y:       Int = 0x07
-    const val CH_DACCEL_Z:       Int = 0x08
-    // LSM303DLHC magnetometer
-    const val CH_MAG_X:          Int = 0x09  // 2 bytes each
-    const val CH_MAG_Y:          Int = 0x0A
-    const val CH_MAG_Z:          Int = 0x0B
-    // MPU9150 gyroscope
-    const val CH_GYRO_X:         Int = 0x0C  // 2 bytes each
-    const val CH_GYRO_Y:         Int = 0x0D
-    const val CH_GYRO_Z:         Int = 0x0E
-    // ADS1292 ExG chip 1 — 24-bit mode
-    const val CH_EXG1_STATUS:    Int = 0x0F  // 1 byte
-    const val CH_EXG1_CH1_24:   Int = 0x10  // 3 bytes
-    const val CH_EXG1_CH2_24:   Int = 0x11  // 3 bytes
-    // ADS1292 ExG chip 2 — 24-bit mode
-    const val CH_EXG2_STATUS:    Int = 0x12  // 1 byte
-    const val CH_EXG2_CH1_24:   Int = 0x13  // 3 bytes
-    const val CH_EXG2_CH2_24:   Int = 0x14  // 3 bytes
-    // GSR+ board channels
-    const val CH_GSR:            Int = 0x15  // 2 bytes — galvanic skin response
-    const val CH_EXP_A7:         Int = 0x16  // 2 bytes — expansion ADC A7
-    const val CH_EXP_A0:         Int = 0x17  // 2 bytes — expansion ADC A0 (PPG)
-    const val CH_EXP_A6:         Int = 0x18  // 2 bytes — expansion ADC A6
-    // Bridge amplifier
-    const val CH_BRIDGE_HIGH:    Int = 0x1A  // 2 bytes
-    const val CH_BRIDGE_LOW:     Int = 0x1B  // 2 bytes
-    // Heart rate (3 bytes: 1 status + 2 data)
-    const val CH_HEART_RATE:     Int = 0x1C  // 3 bytes
-    // ADS1292 ExG — 16-bit mode
-    const val CH_EXG1_CH1_16:   Int = 0x1D  // 2 bytes
-    const val CH_EXG1_CH2_16:   Int = 0x1E  // 2 bytes
-    const val CH_EXG2_CH1_16:   Int = 0x1F  // 2 bytes
-    const val CH_EXG2_CH2_16:   Int = 0x20  // 2 bytes
-    const val CH_EXG1_STATUS_16: Int = 0x21  // 1 byte
-    const val CH_EXG2_STATUS_16: Int = 0x22  // 1 byte
+    const val CH_GYRO_X:         Int = 0x05  // 2 bytes each (MPU9150)
+    const val CH_GYRO_Y:         Int = 0x06
+    const val CH_GYRO_Z:         Int = 0x07
+    const val CH_DACCEL_X:       Int = 0x08  // 2 bytes each (LSM303 wide-range)
+    const val CH_DACCEL_Y:       Int = 0x09
+    const val CH_DACCEL_Z:       Int = 0x0A
+    const val CH_VBATT:          Int = 0x0B  // 2 bytes
+    const val CH_GSR:            Int = 0x0C  // 2 bytes
+    const val CH_EXP_A0:         Int = 0x0D  // 2 bytes (PPG on GSR+ board)
+    const val CH_EXP_A7:         Int = 0x0E  // 2 bytes
+    const val CH_BRIDGE_HIGH:    Int = 0x0F  // 2 bytes
+    const val CH_BRIDGE_LOW:     Int = 0x10  // 2 bytes
+    const val CH_MAG_X:          Int = 0x11  // 2 bytes each (LSM303)
+    const val CH_MAG_Y:          Int = 0x12
+    const val CH_MAG_Z:          Int = 0x13
+    const val CH_EXG1_STATUS:    Int = 0x14  // 1 byte
+    const val CH_EXG1_CH1_24:    Int = 0x15  // 3 bytes each
+    const val CH_EXG1_CH2_24:    Int = 0x16
+    const val CH_EXG2_STATUS:    Int = 0x17  // 1 byte
+    const val CH_EXG2_CH1_24:    Int = 0x18  // 3 bytes each
+    const val CH_EXG2_CH2_24:    Int = 0x19
+    const val CH_EXG1_CH1_16:    Int = 0x1A  // 2 bytes each (16-bit ExG)
+    const val CH_EXG1_CH2_16:    Int = 0x1B
+    const val CH_EXG2_CH1_16:    Int = 0x1C
+    const val CH_EXG2_CH2_16:    Int = 0x1D
+    const val CH_EXG1_STATUS_16: Int = 0x1E  // 1 byte
+    const val CH_EXG2_STATUS_16: Int = 0x1F  // 1 byte
 
-    /** Byte width of each channel type code. Unknown codes default to 2 (safe). */
+    /** Width in bytes for each channel code. */
     fun channelWidth(code: Int): Int = when (code) {
-        CH_TIMESTAMP                                                        -> 3
+        CH_TIMESTAMP                                                -> 3
         CH_EXG1_STATUS, CH_EXG2_STATUS,
-        CH_EXG1_STATUS_16, CH_EXG2_STATUS_16                               -> 1
+        CH_EXG1_STATUS_16, CH_EXG2_STATUS_16                       -> 1
         CH_EXG1_CH1_24, CH_EXG1_CH2_24,
-        CH_EXG2_CH1_24, CH_EXG2_CH2_24, CH_HEART_RATE                      -> 3
-        else                                                                -> 2
+        CH_EXG2_CH1_24, CH_EXG2_CH2_24                             -> 3
+        else                                                        -> 2
     }
 
-    /** Compute exact packet data size from a list of channel codes (includes timestamp). */
+    /** Total packet byte size from channel list (includes timestamp). */
     fun packetSizeFromChannels(channels: List<Int>): Int =
         channels.sumOf { channelWidth(it) }
 
-    /**
-     * Fallback packet size from bitmap when channel list is unavailable.
-     * NOTE: Uses corrected b1 VBATT check (bit 5 of byte1).
-     */
+    /** Fallback packet size from bitmap when channel list unavailable. */
     fun packetDataSize(b0: Int, b1: Int, b2: Int): Int {
         var size = 3  // timestamp
         if (b0 and SENSOR_A_ACCEL      != 0) size += 6
@@ -142,39 +118,29 @@ object ShimmerProtocol {
         )
     }
 
-    const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"
+    const val SPP_UUID               = "00001101-0000-1000-8000-00805F9B34FB"
     const val RESPONSE_TIMEOUT_MS    = 3000L
     const val CHART_BUFFER_SIZE      = 512
+
+    // ─── Inquiry response — bytes logged prominently; parsing in runInquiry ────
+    // Format (may or may not start with 0xFF ACK):
+    //   [0xFF] [0x02] [rate_lo] [rate_hi] [bm0] [bm1] [bm2] [nch] [ch0] ... [chN]
+    // bodyStart = 1 if response[0]==0xFF, else 0
+    // bitmap at bodyStart+3, nch at bodyStart+6, codes at bodyStart+7
 }
 
 // ─── Packet parser ─────────────────────────────────────────────────────────────
-// Uses the channel list from the inquiry response for exact byte layout.
-// Falls back to bitmap-based parsing if channel list is empty.
 
 object ShimmerPacketParser {
 
-    /**
-     * Parse one Shimmer3 data packet.
-     *
-     * [raw] is the bytes AFTER the 0x00 packet-type byte.
-     * If [channels] is non-empty, uses channel-list parsing (authoritative).
-     * Otherwise falls back to bitmap-based parsing.
-     */
     fun parse(
         raw: ByteArray,
         sensorBitmap: IntArray,
         calParams: CalibrationParams,
         channels: List<Int> = emptyList()
-    ): Map<String, Double> {
-        return if (channels.isNotEmpty()) {
-            parseByChannelList(raw, channels, calParams)
-        } else {
-            parseByBitmap(raw, sensorBitmap, calParams)
-        }
-    }
-
-    // ── Channel-list parser ────────────────────────────────────────────────────
-    // This is authoritative — uses exactly the channels the device reported.
+    ): Map<String, Double> =
+        if (channels.isNotEmpty()) parseByChannelList(raw, channels, calParams)
+        else parseByBitmap(raw, sensorBitmap, calParams)
 
     private fun parseByChannelList(
         raw: ByteArray,
@@ -185,7 +151,6 @@ object ShimmerPacketParser {
         var offset = 0
 
         fun remaining() = raw.size - offset
-
         fun readU16(): Int {
             if (remaining() < 2) { offset += minOf(2, remaining()); return 0 }
             val lo = raw[offset].toInt() and 0xFF
@@ -193,12 +158,9 @@ object ShimmerPacketParser {
             offset += 2
             return lo or (hi shl 8)
         }
-
         fun readI16(): Int {
-            val v = readU16()
-            return if (v >= 0x8000) v - 0x10000 else v
+            val v = readU16(); return if (v >= 0x8000) v - 0x10000 else v
         }
-
         fun readI24BE(): Int {
             if (remaining() < 3) { offset += minOf(3, remaining()); return 0 }
             val b0 = raw[offset].toInt() and 0xFF
@@ -208,28 +170,39 @@ object ShimmerPacketParser {
             val v = (b0 shl 16) or (b1 shl 8) or b2
             return if (v >= 0x800000) v - 0x1000000 else v
         }
-
         fun readAdc12() = readU16() and 0x0FFF
 
         for (ch in channels) {
+            if (remaining() <= 0) break
             when (ch) {
-                ShimmerProtocol.CH_TIMESTAMP -> {
-                    // 3-byte timestamp — consume, not emitted
-                    if (remaining() >= 3) offset += 3 else break
+                ShimmerProtocol.CH_TIMESTAMP   -> { if (remaining() >= 3) offset += 3 }
+                ShimmerProtocol.CH_ACCEL_X     -> result["accel_x"] = calParams.calibrateAccel(readI16(), 0)
+                ShimmerProtocol.CH_ACCEL_Y     -> result["accel_y"] = calParams.calibrateAccel(readI16(), 1)
+                ShimmerProtocol.CH_ACCEL_Z     -> result["accel_z"] = calParams.calibrateAccel(readI16(), 2)
+                ShimmerProtocol.CH_GYRO_X      -> result["gyro_x"]  = calParams.calibrateGyro(readI16(), 0)
+                ShimmerProtocol.CH_GYRO_Y      -> result["gyro_y"]  = calParams.calibrateGyro(readI16(), 1)
+                ShimmerProtocol.CH_GYRO_Z      -> result["gyro_z"]  = calParams.calibrateGyro(readI16(), 2)
+                ShimmerProtocol.CH_DACCEL_X    -> {
+                    val v = readI16()
+                    if ("accel_x" !in result) result["accel_x"] = calParams.calibrateAccel(v, 0)
                 }
-                ShimmerProtocol.CH_ACCEL_X -> result["accel_x"] = calParams.calibrateAccel(readI16(), 0)
-                ShimmerProtocol.CH_ACCEL_Y -> result["accel_y"] = calParams.calibrateAccel(readI16(), 1)
-                ShimmerProtocol.CH_ACCEL_Z -> result["accel_z"] = calParams.calibrateAccel(readI16(), 2)
-                ShimmerProtocol.CH_GYRO_X  -> result["gyro_x"] = calParams.calibrateGyro(readI16(), 0)
-                ShimmerProtocol.CH_GYRO_Y  -> result["gyro_y"] = calParams.calibrateGyro(readI16(), 1)
-                ShimmerProtocol.CH_GYRO_Z  -> result["gyro_z"] = calParams.calibrateGyro(readI16(), 2)
-                ShimmerProtocol.CH_MAG_X   -> result["mag_x"] = calParams.calibrateMag(readI16(), 0)
-                ShimmerProtocol.CH_MAG_Y   -> result["mag_y"] = calParams.calibrateMag(readI16(), 1)
-                ShimmerProtocol.CH_MAG_Z   -> result["mag_z"] = calParams.calibrateMag(readI16(), 2)
-                ShimmerProtocol.CH_VBATT   -> result["batt_mv"] = readAdc12() * (3000.0 / 4095.0) * 2.0
-                ShimmerProtocol.CH_GSR     -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
-                ShimmerProtocol.CH_EXP_A0  -> result["ppg_mv"] = calParams.calibratePpg(readAdc12())
-                ShimmerProtocol.CH_EXP_A7  -> result["ch_a7"] = readAdc12().toDouble()
+                ShimmerProtocol.CH_DACCEL_Y    -> {
+                    val v = readI16()
+                    if ("accel_y" !in result) result["accel_y"] = calParams.calibrateAccel(v, 1)
+                }
+                ShimmerProtocol.CH_DACCEL_Z    -> {
+                    val v = readI16()
+                    if ("accel_z" !in result) result["accel_z"] = calParams.calibrateAccel(v, 2)
+                }
+                ShimmerProtocol.CH_MAG_X       -> result["mag_x"]   = calParams.calibrateMag(readI16(), 0)
+                ShimmerProtocol.CH_MAG_Y       -> result["mag_y"]   = calParams.calibrateMag(readI16(), 1)
+                ShimmerProtocol.CH_MAG_Z       -> result["mag_z"]   = calParams.calibrateMag(readI16(), 2)
+                ShimmerProtocol.CH_VBATT       -> result["batt_mv"] = readAdc12() * (3000.0 / 4095.0) * 2.0
+                ShimmerProtocol.CH_GSR         -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
+                ShimmerProtocol.CH_EXP_A0      -> result["ppg_mv"]  = calParams.calibratePpg(readAdc12())
+                ShimmerProtocol.CH_EXP_A7      -> { readU16() }  // consume
+                ShimmerProtocol.CH_BRIDGE_HIGH -> { readU16() }
+                ShimmerProtocol.CH_BRIDGE_LOW  -> { readU16() }
                 ShimmerProtocol.CH_EXG1_STATUS,
                 ShimmerProtocol.CH_EXG1_STATUS_16 -> { if (remaining() > 0) offset++ }
                 ShimmerProtocol.CH_EXG1_CH1_24 -> result["exg1_ch1"] = calParams.calibrateExG(readI24BE())
@@ -242,36 +215,21 @@ object ShimmerPacketParser {
                 ShimmerProtocol.CH_EXG1_CH2_16 -> result["exg1_ch2"] = calParams.calibrateExG16(readI16())
                 ShimmerProtocol.CH_EXG2_CH1_16 -> result["exg2_ch1"] = calParams.calibrateExG16(readI16())
                 ShimmerProtocol.CH_EXG2_CH2_16 -> result["exg2_ch2"] = calParams.calibrateExG16(readI16())
-                ShimmerProtocol.CH_EXP_A6       -> { readU16() }  // consume, not modelled
-                ShimmerProtocol.CH_BRIDGE_HIGH  -> { readU16() }
-                ShimmerProtocol.CH_BRIDGE_LOW   -> { readU16() }
-                ShimmerProtocol.CH_HEART_RATE   -> { readI24BE() }  // 3 bytes, consume
-                ShimmerProtocol.CH_DACCEL_X -> {
-                    val v = readI16()
-                    if ("accel_x" !in result) result["accel_x"] = calParams.calibrateAccel(v, 0)
-                }
-                ShimmerProtocol.CH_DACCEL_Y -> {
-                    val v = readI16()
-                    if ("accel_y" !in result) result["accel_y"] = calParams.calibrateAccel(v, 1)
-                }
-                ShimmerProtocol.CH_DACCEL_Z -> {
-                    val v = readI16()
-                    if ("accel_z" !in result) result["accel_z"] = calParams.calibrateAccel(v, 2)
-                }
                 else -> {
+                    // Unknown — skip by width (safe default = 2)
                     val w = ShimmerProtocol.channelWidth(ch)
                     offset += minOf(w, remaining())
-                    AppLog.i("PKT", "Unhandled ch=0x%02X w=$w offset→$offset/${raw.size}  (known: ts=0x01,ax=0x02,ay=0x03,az=0x04,gx=0x0C,gsr=0x15,ppg=0x17)".format(ch))
+                    AppLog.i("PKT", "Unknown ch=0x%02X w=$w offset→$offset/${raw.size}".format(ch))
                 }
             }
         }
         if (result.isEmpty()) {
-            AppLog.w("PKT", "Channel-list parse produced EMPTY result from ${raw.size}B, ${channels.size} channels")
+            AppLog.w("PKT", "Empty parse — ${raw.size}B, ${channels.size} channels: " +
+                channels.joinToString { "0x%02X".format(it) })
         }
         return result
     }
 
-    // ── Bitmap-based parser (fallback) ─────────────────────────────────────────
     private fun parseByBitmap(
         raw: ByteArray,
         sensorBitmap: IntArray,
@@ -279,8 +237,7 @@ object ShimmerPacketParser {
     ): Map<String, Double> {
         val result = mutableMapOf<String, Double>()
         if (raw.size < 3) return result
-        var offset = 3  // skip 3-byte timestamp
-
+        var offset = 3
         fun remaining() = raw.size - offset
         fun readAdc12(): Int {
             if (remaining() < 2) { offset += minOf(2, remaining()); return 0 }
@@ -298,9 +255,7 @@ object ShimmerPacketParser {
             val b2 = raw[offset+2].toInt() and 0xFF; offset += 3
             val v = (b0 shl 16) or (b1 shl 8) or b2; return if (v >= 0x800000) v - 0x1000000 else v
         }
-
         val b0 = sensorBitmap[0]; val b1 = sensorBitmap[1]; val b2 = sensorBitmap[2]
-
         if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0) {
             result["accel_x"] = calParams.calibrateAccel(readI16(), 0)
             result["accel_y"] = calParams.calibrateAccel(readI16(), 1)
@@ -317,7 +272,7 @@ object ShimmerPacketParser {
             result["mag_z"] = calParams.calibrateMag(readI16(), 2)
         }
         if (b0 and ShimmerProtocol.SENSOR_EXG1_24BIT != 0) {
-            if (remaining() > 0) offset++  // status byte
+            if (remaining() > 0) offset++
             result["exg1_ch1"] = calParams.calibrateExG(readI24BE())
             result["exg1_ch2"] = calParams.calibrateExG(readI24BE())
         } else if (b2 and ShimmerProtocol.SENSOR_b2_EXG1_16BIT != 0) {
@@ -337,7 +292,6 @@ object ShimmerPacketParser {
         if (b0 and ShimmerProtocol.SENSOR_GSR          != 0) result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
         if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0 != 0) result["ppg_mv"]   = calParams.calibratePpg(readAdc12())
         if (b1 and ShimmerProtocol.SENSOR_b1_VBATT     != 0) result["batt_mv"]  = readAdc12() * (3000.0 / 4095.0) * 2.0
-
         return result
     }
 }
