@@ -38,9 +38,11 @@ fun SamplingRateScreen(
     val config     by viewModel.activeConfig.collectAsState()
     val signals    = remember(activeType) { signalsForType(activeType) }
     val supportedKeys by viewModel.supportedSignalKeys.collectAsState()
-    val visibleSignals = remember(signals, supportedKeys) {
-        if (supportedKeys.isEmpty()) signals
-        else signals.filter { it.key in supportedKeys }
+    val visibleSignals by remember(signals) {
+        derivedStateOf {
+            if (supportedKeys.isEmpty()) signals
+            else signals.filter { it.key in supportedKeys }
+        }
     }
     val focusManager = LocalFocusManager.current
 

@@ -45,11 +45,13 @@ fun DashboardScreen(
     val signals         = remember(activeConfig.sensorType) { signalsForType(activeConfig.sensorType) }
     val supportedKeys   by viewModel.supportedSignalKeys.collectAsState()
 
-    // When connected, only show signals the device actually supports.
-    // When not connected (supportedKeys empty), show all signals for the sensor type.
-    val visibleSignals = remember(signals, supportedKeys) {
-        if (supportedKeys.isEmpty()) signals          // not yet connected — show all
-        else signals.filter { it.key in supportedKeys }
+    // derivedStateOf re-evaluates whenever supportedKeys changes, regardless of
+    // whether signals reference equality changed — fixing the remember() cache bug.
+    val visibleSignals by remember(signals) {
+        derivedStateOf {
+            if (supportedKeys.isEmpty()) signals
+            else signals.filter { it.key in supportedKeys }
+        }
     }
 
     // Chart signal selection — show first 6 by default (covers accel+gyro for GSR+)
@@ -506,9 +508,11 @@ fun RecordingSetupSheet(
 
     // Only offer signals the connected device actually supports;
     // if not yet connected show all.
-    val availableSignals = remember(allSignals, supportedKeysRec) {
-        if (supportedKeysRec.isEmpty()) allSignals
-        else allSignals.filter { it.key in supportedKeysRec }
+    val availableSignals by remember(allSignals) {
+        derivedStateOf {
+            if (supportedKeysRec.isEmpty()) allSignals
+            else allSignals.filter { it.key in supportedKeysRec }
+        }
     }
 
     var localSelection by remember(config, availableSignals) {
