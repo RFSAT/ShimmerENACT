@@ -199,9 +199,7 @@ object ShimmerPacketParser {
                 ShimmerProtocol.CH_VBATT       -> result["batt_mv"] = readAdc12() * (3000.0 / 4095.0) * 2.0
                 ShimmerProtocol.CH_GSR         -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
                 ShimmerProtocol.CH_EXP_A0      -> result["ppg_mv"]  = calParams.calibratePpg(readAdc12())
-                ShimmerProtocol.CH_EXP_A7      -> { readU16() }  // consume
-                ShimmerProtocol.CH_BRIDGE_HIGH -> { readU16() }
-                ShimmerProtocol.CH_BRIDGE_LOW  -> { readU16() }
+                ShimmerProtocol.CH_EXP_A7      -> { readU16() }  // consume, not modelled
                 ShimmerProtocol.CH_EXG1_STATUS,
                 ShimmerProtocol.CH_EXG1_STATUS_16 -> { if (remaining() > 0) offset++ }
                 ShimmerProtocol.CH_EXG1_CH1_24 -> result["exg1_ch1"] = calParams.calibrateExG(readI24BE())
