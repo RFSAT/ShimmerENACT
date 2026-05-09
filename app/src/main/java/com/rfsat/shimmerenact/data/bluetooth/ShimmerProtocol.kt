@@ -148,6 +148,11 @@ object ShimmerPacketParser {
     ): Map<String, Double> {
         val result = mutableMapOf<String, Double>()
         var offset = 0
+        // Log channel list on first call to help diagnose unknown codes
+        if (raw.isNotEmpty()) {
+            AppLog.i("PKT", "Parse: ${channels.size} channels [" +
+                channels.joinToString { "0x%02X".format(it) } + "] pkt=${raw.size}B")
+        }
 
         fun remaining() = raw.size - offset
         fun readU16(): Int {
@@ -159,6 +164,15 @@ object ShimmerPacketParser {
         }
         fun readI16(): Int {
             val v = readU16(); return if (v >= 0x8000) v - 0x10000 else v
+        }
+        // Big-endian signed 16-bit (MPU9150 gyro, LSM303 mag)
+        fun readI16BE(): Int {
+            if (remaining() < 2) { offset += minOf(2, remaining()); return 0 }
+            val hi = raw[offset].toInt() and 0xFF
+            val lo = raw[offset + 1].toInt() and 0xFF
+            offset += 2
+            val v = (hi shl 8) or lo
+            return if (v >= 0x8000) v - 0x10000 else v
         }
         fun readI24BE(): Int {
             if (remaining() < 3) { offset += minOf(3, remaining()); return 0 }
@@ -178,9 +192,9 @@ object ShimmerPacketParser {
                 ShimmerProtocol.CH_ACCEL_X     -> result["accel_x"] = calParams.calibrateAccel(readI16(), 0)
                 ShimmerProtocol.CH_ACCEL_Y     -> result["accel_y"] = calParams.calibrateAccel(readI16(), 1)
                 ShimmerProtocol.CH_ACCEL_Z     -> result["accel_z"] = calParams.calibrateAccel(readI16(), 2)
-                ShimmerProtocol.CH_GYRO_X      -> result["gyro_x"]  = calParams.calibrateGyro(readI16(), 0)
-                ShimmerProtocol.CH_GYRO_Y      -> result["gyro_y"]  = calParams.calibrateGyro(readI16(), 1)
-                ShimmerProtocol.CH_GYRO_Z      -> result["gyro_z"]  = calParams.calibrateGyro(readI16(), 2)
+                ShimmerProtocol.CH_GYRO_X      -> result["gyro_x"]  = calParams.calibrateGyro(readI16BE(), 0)
+                ShimmerProtocol.CH_GYRO_Y      -> result["gyro_y"]  = calParams.calibrateGyro(readI16BE(), 1)
+                ShimmerProtocol.CH_GYRO_Z      -> result["gyro_z"]  = calParams.calibrateGyro(readI16BE(), 2)
                 ShimmerProtocol.CH_DACCEL_X    -> {
                     val v = readI16()
                     if ("accel_x" !in result) result["accel_x"] = calParams.calibrateAccel(v, 0)
@@ -193,9 +207,9 @@ object ShimmerPacketParser {
                     val v = readI16()
                     if ("accel_z" !in result) result["accel_z"] = calParams.calibrateAccel(v, 2)
                 }
-                ShimmerProtocol.CH_MAG_X       -> result["mag_x"]   = calParams.calibrateMag(readI16(), 0)
-                ShimmerProtocol.CH_MAG_Y       -> result["mag_y"]   = calParams.calibrateMag(readI16(), 1)
-                ShimmerProtocol.CH_MAG_Z       -> result["mag_z"]   = calParams.calibrateMag(readI16(), 2)
+                ShimmerProtocol.CH_MAG_X       -> result["mag_x"]   = calParams.calibrateMag(readI16BE(), 0)
+                ShimmerProtocol.CH_MAG_Y       -> result["mag_y"]   = calParams.calibrateMag(readI16BE(), 1)
+                ShimmerProtocol.CH_MAG_Z       -> result["mag_z"]   = calParams.calibrateMag(readI16BE(), 2)
                 ShimmerProtocol.CH_VBATT       -> result["batt_mv"] = readAdc12() * (3000.0 / 4095.0) * 2.0
                 ShimmerProtocol.CH_GSR         -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
                 ShimmerProtocol.CH_EXP_A0      -> result["ppg_mv"]  = calParams.calibratePpg(readAdc12())

@@ -198,42 +198,41 @@ class RecordingRepository(private val context: Context) {
 
     // ─── List sessions ────────────────────────────────────────────────────────
     suspend fun listSessions(): List<RecordingSession> = withContext(Dispatchers.IO) {
-        val root = getRootDir()
+        val root = try { getRootDir() } catch (_: Exception) { return@withContext emptyList() }
         root.listFiles { f -> f.isDirectory }
             ?.sortedByDescending { it.lastModified() }
-            ?.map { dir ->
-                val csvFiles = dir.listFiles { f -> f.extension == "csv" }
-                    ?.sortedBy { it.name }
-                    ?.map { f ->
-                        val rate = f.bufferedReader().useLines { lines ->
-                            lines.find { it.startsWith("# Output rate:") }
-                                ?.substringAfter("Output rate:")
-                                ?.trim()?.substringBefore(" Hz")?.toIntOrNull()
-                                ?: lines.find { it.startsWith("# Hardware rate:") }
-                                    ?.substringAfter("Hz  |  Output rate:")
-                                    ?.trim()?.substringBefore(" Hz")?.toIntOrNull()
-                                ?: 0
-                        }
-                        val rows = f.bufferedReader().useLines { lines ->
-                            lines.find { it.startsWith("# Rows written:") }
-                                ?.substringAfter(":")?.trim()?.toLongOrNull() ?: 0L
-                        }
-                        RecordingFile(
-                            name = f.nameWithoutExtension,
-                            path = f.absolutePath,
-                            sizeBytes = f.length(),
-                            lastModified = f.lastModified(),
-                            sessionId = dir.name.substringAfterLast("_", dir.name),
-                            rateHz = rate,
-                            rowCount = rows
-                        )
-                    } ?: emptyList()
-                RecordingSession(
-                    sessionId = dir.name,
-                    deviceName = dir.name.substringBeforeLast("_"),
-                    startTimeMs = dir.lastModified(),
-                    files = csvFiles
-                )
+            ?.mapNotNull { dir ->
+                try {
+                    val csvFiles = dir.listFiles { f -> f.extension == "csv" }
+                        ?.sortedBy { it.name }
+                        ?.mapNotNull { f ->
+                            try {
+                                val lines = f.readLines()
+                                val rate = lines
+                                    .find { it.startsWith("# Hardware rate:") }
+                                    ?.substringAfter("Output rate:")
+                                    ?.trim()?.substringBefore(" Hz")?.toIntOrNull() ?: 0
+                                val rows = lines
+                                    .find { it.startsWith("# Rows written:") }
+                                    ?.substringAfter(":")?.trim()?.toLongOrNull() ?: 0L
+                                RecordingFile(
+                                    name = f.nameWithoutExtension,
+                                    path = f.absolutePath,
+                                    sizeBytes = f.length(),
+                                    lastModified = f.lastModified(),
+                                    sessionId = dir.name,
+                                    rateHz = rate,
+                                    rowCount = rows
+                                )
+                            } catch (_: Exception) { null }
+                        } ?: emptyList()
+                    RecordingSession(
+                        sessionId = dir.name,
+                        deviceName = dir.name.substringBeforeLast("_"),
+                        startTimeMs = dir.lastModified(),
+                        files = csvFiles
+                    )
+                } catch (_: Exception) { null }
             } ?: emptyList()
     }
 

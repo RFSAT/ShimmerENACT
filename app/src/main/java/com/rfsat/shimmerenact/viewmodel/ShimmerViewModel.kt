@@ -317,14 +317,21 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
     fun stopRecording() {
         viewModelScope.launch {
-            val result = recordingRepo.stopRecording()
-            result.onSuccess { session ->
-                AppLog.ok("REC", "Stopped — ${session.files.size} files, ${recordingRepo.totalSamplesWritten} rows")
-            }.onFailure { e ->
-                AppLog.e("REC", "Stop error: ${e.message}")
+            try {
+                val result = recordingRepo.stopRecording()
+                result.onSuccess { session ->
+                    AppLog.ok("REC", "Stopped — ${session.files.size} files, ${recordingRepo.totalSamplesWritten} rows")
+                }.onFailure { e ->
+                    AppLog.e("REC", "Stop error: ${e.message}")
+                }
+            } catch (e: Exception) {
+                AppLog.e("REC", "stopRecording crashed: ${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                _recordingState.value = RecordingState()
+                try { loadSessions() } catch (e: Exception) {
+                    AppLog.e("REC", "loadSessions failed: ${e.message}")
+                }
             }
-            _recordingState.value = RecordingState()
-            loadSessions()
         }
     }
 
