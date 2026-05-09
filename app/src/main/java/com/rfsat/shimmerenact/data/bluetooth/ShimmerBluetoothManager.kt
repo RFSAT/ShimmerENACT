@@ -215,50 +215,40 @@ class ShimmerBluetoothManager(private val context: Context) {
             return@withContext
         }
 
-        // The first channel code is always 0x00 (timestamp).
-        // Scan backward from the end of the response to find where channel codes start.
-        // Approach: after skipping leading 0xFF bytes, try offset i+6 for nch and codes.
-        // If channel[0] != 0x00, try adjusting by ±1 until we find it.
-        var bodyOk = false
-        for (delta in 0..4) {
-            for (sign in intArrayOf(0, 1, -1, 2, -2)) {
-                val adj = i + sign * delta
-                if (adj < 0 || adj + 6 > total) continue
-                val testNch = buf[adj + 5].toInt() and 0xFF
-                if (testNch == 0 || testNch > 20) continue
-                if (adj + 6 + testNch > total) continue
-                val firstCh = buf[adj + 6].toInt() and 0xFF
-                if (firstCh == ShimmerProtocol.CH_TIMESTAMP) {
-                    i = adj
-                    bodyOk = true
-                    AppLog.i("BT", "Inquiry body found at offset $i (delta=$sign×$delta)")
-                    break
-                }
-            }
-            if (bodyOk) break
-        }
+        // Format: [0xFF] [rate_lo] [rate_hi] [bm0] [bm1] [bm2] [nch] [ch0..chN]
+        // Skip leading 0xFF ACK byte(s) — there may be one or two.
+        // Then read fixed layout: 6 header bytes + nch channel codes.
+        // Log full response so we can verify the offset.
+        var i = 0
+        while (i < total && buf[i].toInt() and 0xFF == 0xFF) i++
 
-        if (!bodyOk) {
-            AppLog.w("BT", "Could not find timestamp anchor in inquiry response — using default bitmap")
+        AppLog.i("BT", "Inquiry body at offset $i/${total}: " +
+            buf.drop(i).take(10).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+
+        // Minimum body: rate(2) + bitmap(3) + nch(1) = 6 bytes
+        if (i + 6 > total) {
+            AppLog.w("BT", "Inquiry body too short ($total bytes, body at $i) — using default bitmap")
             sensorBitmap = defaultBitmapForType(config.sensorType)
             channelList  = emptyList()
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
             return@withContext
         }
 
+        val regLo    = buf[i + 0].toInt() and 0xFF
+        val regHi    = buf[i + 1].toInt() and 0xFF
+        val actualHz = ShimmerProtocol.registerToHz(regLo or (regHi shl 8))
         sensorBitmap[0] = buf[i + 2].toInt() and 0xFF
         sensorBitmap[1] = buf[i + 3].toInt() and 0xFF
         sensorBitmap[2] = buf[i + 4].toInt() and 0xFF
         _sensorBitmapFlow.value = sensorBitmap.copyOf()
+        val nch = buf[i + 5].toInt() and 0xFF
 
-        val regLo    = buf[i + 0].toInt() and 0xFF
-        val regHi    = buf[i + 1].toInt() and 0xFF
-        val actualHz = ShimmerProtocol.registerToHz(regLo or (regHi shl 8))
-        val nch      = buf[i + 5].toInt() and 0xFF
-
-        channelList = if (nch > 0 && i + 6 + nch <= total) {
+        channelList = if (nch in 1..20 && i + 6 + nch <= total) {
             (0 until nch).map { buf[i + 6 + it].toInt() and 0xFF }
-        } else emptyList()
+        } else {
+            AppLog.w("BT", "nch=$nch out of range or beyond buffer — using default bitmap")
+            emptyList()
+        }
 
         AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): [%s]".format(
             sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz, nch,
