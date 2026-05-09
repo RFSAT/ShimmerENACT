@@ -335,50 +335,64 @@ class ShimmerBluetoothManager(private val context: Context) {
             AppLog.i("BT", "Stream started — pkt=${pktSize}B, channels(${channelList.size}): " +
                 channelList.joinToString { "0x%02X".format(it) })
             val packetBuf = ByteArray(256)
-            // Each Shimmer3 data packet is preceded by a single 0x00 byte.
-            // We read that byte first, then read exactly pktSize bytes.
-            // If we lose sync (too many bad bytes), resync by scanning for 0x00
-            // followed by a valid timestamp (first 3 bytes non-zero or reasonable).
-            var synced = false
-            var lastTimestamp = -1L
+
+            // ── Log first 32 raw bytes to determine actual packet framing ────
+            val probeBuf = ByteArray(32)
+            var probeGot = 0
+            while (probeGot < 32) {
+                val n = try { inStream.read(probeBuf, probeGot, 32 - probeGot) }
+                        catch (_: Exception) { break }
+                if (n == -1) break
+                probeGot += n
+            }
+            AppLog.ok("BT", "=== First ${probeGot}B from device: " +
+                probeBuf.take(probeGot).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } + " ===")
+
+            // Push probe bytes into packetBuf so they are not lost.
+            // Determine delimiter: if first byte is 0x00, use sync-byte framing.
+            // Otherwise read continuously without a delimiter.
+            val useDelimiter = probeGot > 0 && probeBuf[0].toInt() and 0xFF == 0x00
+            AppLog.i("BT", "Framing: ${if (useDelimiter) "delimiter 0x00" else "continuous (no delimiter)"}")
+
+            // Prime the pipeline with probe bytes
+            var probeOffset = 0
+            fun readByte(): Int {
+                if (probeOffset < probeGot) return probeBuf[probeOffset++].toInt() and 0xFF
+                return inStream.read()
+            }
+            fun readBytes(buf: ByteArray, off: Int, len: Int): Int {
+                if (probeOffset >= probeGot) return inStream.read(buf, off, len)
+                val fromProbe = minOf(len, probeGot - probeOffset)
+                probeBuf.copyInto(buf, off, probeOffset, probeOffset + fromProbe)
+                probeOffset += fromProbe
+                if (fromProbe < len) {
+                    val rest = inStream.read(buf, off + fromProbe, len - fromProbe)
+                    return if (rest == -1) fromProbe else fromProbe + rest
+                }
+                return fromProbe
+            }
 
             while (isActive && _connectionState.value == ConnectionState.CONNECTED) {
                 try {
-                    // ── Sync: scan for 0x00 packet delimiter ──────────────────
-                    val startByte = inStream.read()
-                    if (startByte == -1) { AppLog.w("BT", "Stream EOF"); break }
-
-                    if (startByte != 0x00) {
-                        if (synced) {
-                            // Lost sync — don't count isolated non-zero bytes as errors
-                            // since they could be high bytes of BE gyro values.
-                            // Instead skip and resync.
-                            synced = false
-                        }
-                        badBytes++
-                        if (badBytes % 100 == 0) AppLog.d("BT", "Resyncing — skipped $badBytes bytes")
-                        continue
+                    if (useDelimiter) {
+                        // Scan for 0x00 packet delimiter
+                        val startByte = readByte()
+                        if (startByte == -1) { AppLog.w("BT", "Stream EOF"); break }
+                        if (startByte != 0x00) { badBytes++; continue }
                     }
 
                     val expectedSize = pktSize
                     var bytesRead = 0
                     while (bytesRead < expectedSize) {
-                        val n = inStream.read(packetBuf, bytesRead, expectedSize - bytesRead)
+                        val n = if (probeOffset < probeGot) {
+                            readBytes(packetBuf, bytesRead, expectedSize - bytesRead)
+                        } else {
+                            inStream.read(packetBuf, bytesRead, expectedSize - bytesRead)
+                        }
                         if (n == -1) break
                         bytesRead += n
                     }
                     if (bytesRead < 3) { AppLog.w("BT", "Packet too short: ${bytesRead}B"); continue }
-
-                    // Validate timestamp is plausible (monotonically non-decreasing)
-                    val ts = ((packetBuf[0].toInt() and 0xFF)) or
-                             ((packetBuf[1].toInt() and 0xFF) shl 8) or
-                             ((packetBuf[2].toInt() and 0xFF) shl 16)
-                    if (lastTimestamp >= 0 && ts < lastTimestamp - 65536) {
-                        // Timestamp went backward by more than wrap amount — likely misaligned
-                        synced = false; badBytes++; continue
-                    }
-                    lastTimestamp = ts.toLong()
-                    synced = true
 
                     val rawValues = ShimmerPacketParser.parse(
                         packetBuf.copyOf(bytesRead), sensorBitmap, calParams, channelList)
