@@ -129,19 +129,8 @@ class ShimmerBluetoothManager(private val context: Context) {
                 AppLog.i("BT", "Sending INQUIRY…")
                 runInquiry(config)
 
-                AppLog.i("BT", "Setting hardware rate: ${config.hardwareRateHz} Hz…")
-                val rateCmd = ShimmerProtocol.buildRateCommand(config.hardwareRateHz)
-                sendCommand(rateCmd)
-                if (readAckWithTimeout(500L)) {
-                    AppLog.ok("BT", "Rate ACK received — ${config.hardwareRateHz} Hz")
-                } else {
-                    AppLog.w("BT", "No rate ACK — continuing anyway")
-                }
-
-                AppLog.i("BT", "Sending START_STREAMING…")
+                AppLog.i("BT", "Sending START_STREAMING (0x07)…")
                 sendCommand(byteArrayOf(ShimmerProtocol.CMD_START_STREAMING))
-                // Do NOT consume the 0xFF ACK here — the stream loop skips non-0x00
-                // bytes naturally. Consuming it risks eating the first data delimiter.
                 AppLog.ok("BT", "Streaming started — listening for data packets…")
 
                 startStreamLoop(config, capturedInput)
@@ -217,6 +206,19 @@ class ShimmerBluetoothManager(private val context: Context) {
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
             AppLog.d("BT", "Default bitmap: 0x%02X 0x%02X 0x%02X".format(
                 sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
+        }
+        // Drain any residual bytes (e.g. extra inquiry response bytes or ACK for inquiry)
+        withContext(Dispatchers.IO) {
+            val stream = inputStream ?: return@withContext
+            try {
+                var avail = stream.available()
+                var drained = 0
+                while (avail > 0 && drained < 64) {
+                    stream.read(); drained++
+                    avail = stream.available()
+                }
+                if (drained > 0) AppLog.d("BT", "Drained $drained stale bytes after inquiry")
+            } catch (_: Exception) {}
         }
     }
 
@@ -337,16 +339,27 @@ class ShimmerBluetoothManager(private val context: Context) {
             val packetBuf = ByteArray(256)
 
             // ── Log first 32 raw bytes to determine actual packet framing ────
+            // Use a 3-second timeout — if nothing arrives, the device isn't streaming.
             val probeBuf = ByteArray(32)
             var probeGot = 0
-            while (probeGot < 32) {
-                val n = try { inStream.read(probeBuf, probeGot, 32 - probeGot) }
-                        catch (_: Exception) { break }
-                if (n == -1) break
-                probeGot += n
+            val probeDeadline = System.currentTimeMillis() + 3000L
+            while (probeGot < 32 && System.currentTimeMillis() < probeDeadline) {
+                val avail = try { inStream.available() } catch (_: Exception) { break }
+                if (avail > 0) {
+                    val n = try { inStream.read(probeBuf, probeGot, minOf(avail, 32 - probeGot)) }
+                            catch (_: Exception) { break }
+                    if (n == -1) break
+                    probeGot += n
+                } else {
+                    kotlinx.coroutines.delay(50)
+                }
             }
-            AppLog.ok("BT", "=== First ${probeGot}B from device: " +
-                probeBuf.take(probeGot).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } + " ===")
+            if (probeGot == 0) {
+                AppLog.e("BT", "=== No data received from device after 3s — START_STREAMING may have failed ===")
+            } else {
+                AppLog.ok("BT", "=== First ${probeGot}B from device: " +
+                    probeBuf.take(probeGot).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } + " ===")
+            }
 
             // Push probe bytes into packetBuf so they are not lost.
             // Determine delimiter: if first byte is 0x00, use sync-byte framing.
