@@ -263,6 +263,11 @@ object ShimmerPacketParser {
             val lo = raw[offset].toInt() and 0xFF; val hi = raw[offset + 1].toInt() and 0xFF
             offset += 2; val v = lo or (hi shl 8); return if (v >= 0x8000) v - 0x10000 else v
         }
+        fun readI16BE(): Int {
+            if (remaining() < 2) { offset += minOf(2, remaining()); return 0 }
+            val hi = raw[offset].toInt() and 0xFF; val lo = raw[offset + 1].toInt() and 0xFF
+            offset += 2; val v = (hi shl 8) or lo; return if (v >= 0x8000) v - 0x10000 else v
+        }
         fun readI24BE(): Int {
             if (remaining() < 3) { offset += minOf(3, remaining()); return 0 }
             val b0 = raw[offset].toInt() and 0xFF; val b1 = raw[offset+1].toInt() and 0xFF
