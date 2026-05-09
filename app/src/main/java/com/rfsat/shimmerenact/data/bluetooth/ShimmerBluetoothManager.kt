@@ -215,6 +215,37 @@ class ShimmerBluetoothManager(private val context: Context) {
             return@withContext
         }
 
+        // The first channel code is always 0x00 (timestamp).
+        // Scan backward from the end of the response to find where channel codes start.
+        // Approach: after skipping leading 0xFF bytes, try offset i+6 for nch and codes.
+        // If channel[0] != 0x00, try adjusting by ±1 until we find it.
+        var bodyOk = false
+        for (delta in 0..4) {
+            for (sign in intArrayOf(0, 1, -1, 2, -2)) {
+                val adj = i + sign * delta
+                if (adj < 0 || adj + 6 > total) continue
+                val testNch = buf[adj + 5].toInt() and 0xFF
+                if (testNch == 0 || testNch > 20) continue
+                if (adj + 6 + testNch > total) continue
+                val firstCh = buf[adj + 6].toInt() and 0xFF
+                if (firstCh == ShimmerProtocol.CH_TIMESTAMP) {
+                    i = adj
+                    bodyOk = true
+                    AppLog.i("BT", "Inquiry body found at offset $i (delta=$sign×$delta)")
+                    break
+                }
+            }
+            if (bodyOk) break
+        }
+
+        if (!bodyOk) {
+            AppLog.w("BT", "Could not find timestamp anchor in inquiry response — using default bitmap")
+            sensorBitmap = defaultBitmapForType(config.sensorType)
+            channelList  = emptyList()
+            _sensorBitmapFlow.value = sensorBitmap.copyOf()
+            return@withContext
+        }
+
         sensorBitmap[0] = buf[i + 2].toInt() and 0xFF
         sensorBitmap[1] = buf[i + 3].toInt() and 0xFF
         sensorBitmap[2] = buf[i + 4].toInt() and 0xFF
