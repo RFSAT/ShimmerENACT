@@ -129,6 +129,11 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         try {
+            // Always reset recording state on startup — if the app crashed mid-recording,
+            // this prevents a corrupted state from crashing every subsequent launch.
+            recordingRepo.resetRecordingState()
+            _recordingState.value = RecordingState()
+
             observeConnectionState()
             observeSamples()
             observeErrors()

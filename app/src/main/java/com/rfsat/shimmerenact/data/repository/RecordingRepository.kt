@@ -148,44 +148,52 @@ class RecordingRepository(private val context: Context) {
 
     // ─── Stop recording ───────────────────────────────────────────────────────
     suspend fun stopRecording(): Result<RecordingSession> = withContext(Dispatchers.IO) {
-        if (!_isRecording) {
-            // May be in bad state — reset and report
-            resetRecordingState()
-            return@withContext Result.failure(IllegalStateException("Not recording"))
-        }
-        _isRecording = false  // Set false FIRST so writeSampleSync stops writing
-        val endTs = isoFmt.format(Date())
-        val files = mutableListOf<RecordingFile>()
-        for (ch in channels) {
-            try {
-                ch.writer.write("# Session end: $endTs\n")
-                ch.writer.write("# Rows written: ${ch.rowsWritten}\n")
-                ch.writer.flush()
-                ch.writer.close()
-                files.add(RecordingFile(
-                    name = ch.file.nameWithoutExtension,
-                    path = ch.file.absolutePath,
-                    sizeBytes = ch.file.length(),
-                    lastModified = ch.file.lastModified(),
-                    signalDisplayName = ch.signal.displayName,
-                    signalUnit = ch.signal.unit,
-                    rateHz = ch.targetHz,
-                    sessionId = sessionId,
-                    rowCount = ch.rowsWritten
-                ))
-            } catch (e: Exception) {
-                AppLog.e("REC", "Error closing ${ch.signal.key}: ${e.message}")
+        _isRecording = false  // Stop writes immediately, even if rest fails
+        return@withContext try {
+            val endTs = isoFmt.format(Date())
+            val files = mutableListOf<RecordingFile>()
+            val channelsCopy = channels.toList()  // snapshot before clear
+            channels.clear()
+
+            for (ch in channelsCopy) {
+                try {
+                    ch.writer.write("# Session end: $endTs\n")
+                    ch.writer.write("# Rows written: ${ch.rowsWritten}\n")
+                    ch.writer.flush()
+                    ch.writer.close()
+                    if (ch.file.exists() && ch.file.length() > 0) {
+                        files.add(RecordingFile(
+                            name = ch.file.nameWithoutExtension,
+                            path = ch.file.absolutePath,
+                            sizeBytes = ch.file.length(),
+                            lastModified = ch.file.lastModified(),
+                            signalDisplayName = ch.signal.displayName,
+                            signalUnit = ch.signal.unit,
+                            rateHz = ch.targetHz,
+                            sessionId = sessionId,
+                            rowCount = ch.rowsWritten
+                        ))
+                    }
+                } catch (e: Exception) {
+                    AppLog.e("REC", "Error closing ${ch.signal.key}: ${e.message}")
+                }
             }
+
+            val session = RecordingSession(
+                sessionId = sessionId,
+                deviceName = sessionDir?.name?.substringBeforeLast("_") ?: "Unknown",
+                startTimeMs = runCatching {
+                    sessionDateFmt.parse(sessionId)?.time ?: 0L
+                }.getOrDefault(0L),
+                files = files
+            )
+            AppLog.ok("REC", "Session stopped — ${files.size} files, $_totalSamplesWritten rows")
+            Result.success(session)
+        } catch (e: Exception) {
+            AppLog.e("REC", "stopRecording exception: ${e.javaClass.simpleName}: ${e.message}")
+            channels.clear()
+            Result.failure(e)
         }
-        channels.clear()
-        val session = RecordingSession(
-            sessionId = sessionId,
-            deviceName = sessionDir?.name?.substringBeforeLast("_") ?: "",
-            startTimeMs = runCatching { sessionDateFmt.parse(sessionId)?.time ?: 0L }.getOrDefault(0L),
-            files = files
-        )
-        AppLog.ok("REC", "Session stopped — ${files.size} files, $_totalSamplesWritten rows")
-        Result.success(session)
     }
 
     // ─── List sessions ────────────────────────────────────────────────────────
@@ -240,22 +248,14 @@ class RecordingRepository(private val context: Context) {
         File(path).delete()
     }
 
-    // ─── Storage location: Downloads/ShimmerENACT ─────────────────────────────
-    // Uses the public Downloads folder so files are accessible via any file manager.
-    // Requires no special permissions on Android 10+ (files in public downloads
-    // created by the app are accessible without READ_EXTERNAL_STORAGE).
+    // ─── Storage location ──────────────────────────────────────────────────────
+    // Downloads/ShimmerENACT — accessible in any file manager.
     private fun getRootDir(): File {
-        // Primary: public Downloads/ShimmerENACT — accessible in any file manager.
-        // Android 10+ doesn't need WRITE_EXTERNAL_STORAGE for this path.
-        // Fallback: app-specific external storage (always writable, no permission needed).
-        val downloadsDir = try {
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                ?.takeIf { it.exists() || it.mkdirs() }
-        } catch (_: Exception) { null }
-        val base = downloadsDir
-            ?: context.getExternalFilesDir(null)
-            ?: context.filesDir
-        return File(base, "ShimmerENACT").also { if (!it.exists()) it.mkdirs() }
+        val downloads = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS)
+        val root = File(downloads, "ShimmerENACT")
+        if (!root.exists()) root.mkdirs()
+        return root
     }
 }
 
