@@ -43,10 +43,12 @@ object ShimmerProtocol {
     const val CH_ACCEL_X:        Int = 0x01  // 2 bytes (ADXL345 low-noise)
     const val CH_ACCEL_Y:        Int = 0x02
     const val CH_ACCEL_Z:        Int = 0x03
-    const val CH_GYRO_X:         Int = 0x04  // 2 bytes (MPU9150)
-    const val CH_GYRO_Y:         Int = 0x05
-    const val CH_GYRO_Z:         Int = 0x06
-    const val CH_MAG_X:          Int = 0x07  // 2 bytes (LSM303)
+    // Gyro: single code 0x04 covers all 3 axes as a 6-byte big-endian block
+    const val CH_GYRO:           Int = 0x04  // 6 bytes: X_hi,X_lo, Y_hi,Y_lo, Z_hi,Z_lo
+    // Mag: single code 0x07 covers all 3 axes, LSM303 sends X,Z,Y order
+    const val CH_MAG:            Int = 0x07  // 6 bytes: X_hi,X_lo, Z_hi,Z_lo, Y_hi,Y_lo
+    // Individual mag axis codes (if firmware sends them separately)
+    const val CH_MAG_X:          Int = 0x07
     const val CH_MAG_Y:          Int = 0x08
     const val CH_MAG_Z:          Int = 0x09
     const val CH_VBATT:          Int = 0x0A  // 2 bytes
@@ -72,6 +74,7 @@ object ShimmerProtocol {
     /** Width in bytes for each channel code. */
     fun channelWidth(code: Int): Int = when (code) {
         CH_TIMESTAMP                                                -> 3
+        CH_GYRO, CH_MAG                                             -> 6
         CH_EXG1_STATUS, CH_EXG2_STATUS,
         CH_EXG1_STATUS_16, CH_EXG2_STATUS_16                       -> 1
         CH_EXG1_CH1_24, CH_EXG1_CH2_24,
@@ -187,9 +190,11 @@ object ShimmerPacketParser {
                 ShimmerProtocol.CH_ACCEL_X     -> result["accel_x"] = calParams.calibrateAccel(readI16(), 0)
                 ShimmerProtocol.CH_ACCEL_Y     -> result["accel_y"] = calParams.calibrateAccel(readI16(), 1)
                 ShimmerProtocol.CH_ACCEL_Z     -> result["accel_z"] = calParams.calibrateAccel(readI16(), 2)
-                ShimmerProtocol.CH_GYRO_X      -> result["gyro_x"]  = calParams.calibrateGyro(readI16BE(), 0)
-                ShimmerProtocol.CH_GYRO_Y      -> result["gyro_y"]  = calParams.calibrateGyro(readI16BE(), 1)
-                ShimmerProtocol.CH_GYRO_Z      -> result["gyro_z"]  = calParams.calibrateGyro(readI16BE(), 2)
+                ShimmerProtocol.CH_GYRO       -> {
+                    result["gyro_x"] = calParams.calibrateGyro(readI16BE(), 0)
+                    result["gyro_y"] = calParams.calibrateGyro(readI16BE(), 1)
+                    result["gyro_z"] = calParams.calibrateGyro(readI16BE(), 2)
+                }
                 ShimmerProtocol.CH_DACCEL_X    -> {
                     val v = readI16()
                     if ("accel_x" !in result) result["accel_x"] = calParams.calibrateAccel(v, 0)
@@ -202,10 +207,12 @@ object ShimmerPacketParser {
                     val v = readI16()
                     if ("accel_z" !in result) result["accel_z"] = calParams.calibrateAccel(v, 2)
                 }
-                // LSM303DLHC magnetometer sends data in order: X, Z, Y (not X, Y, Z)
-                ShimmerProtocol.CH_MAG_X       -> result["mag_x"]   = calParams.calibrateMag(readI16BE(), 0)
-                ShimmerProtocol.CH_MAG_Y       -> result["mag_z"]   = calParams.calibrateMag(readI16BE(), 2)  // Z data in Y slot
-                ShimmerProtocol.CH_MAG_Z       -> result["mag_y"]   = calParams.calibrateMag(readI16BE(), 1)  // Y data in Z slot
+                // LSM303DLHC sends all 3 mag axes under code 0x07 in X,Z,Y order
+                ShimmerProtocol.CH_MAG        -> {
+                    result["mag_x"] = calParams.calibrateMag(readI16BE(), 0)  // X first
+                    result["mag_z"] = calParams.calibrateMag(readI16BE(), 2)  // Z second
+                    result["mag_y"] = calParams.calibrateMag(readI16BE(), 1)  // Y third
+                }
                 ShimmerProtocol.CH_VBATT       -> result["batt_mv"] = readAdc12() * (3000.0 / 4095.0) * 2.0
                 ShimmerProtocol.CH_GSR         -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
                 ShimmerProtocol.CH_EXP_A0      -> result["ppg_mv"]  = calParams.calibratePpg(readAdc12())
@@ -269,14 +276,14 @@ object ShimmerPacketParser {
             result["accel_z"] = calParams.calibrateAccel(readI16(), 2)
         }
         if (b0 and ShimmerProtocol.SENSOR_GYRO != 0) {
-            result["gyro_x"] = calParams.calibrateGyro(readI16(), 0)
-            result["gyro_y"] = calParams.calibrateGyro(readI16(), 1)
-            result["gyro_z"] = calParams.calibrateGyro(readI16(), 2)
+            result["gyro_x"] = calParams.calibrateGyro(readI16BE(), 0)
+            result["gyro_y"] = calParams.calibrateGyro(readI16BE(), 1)
+            result["gyro_z"] = calParams.calibrateGyro(readI16BE(), 2)
         }
         if (b0 and ShimmerProtocol.SENSOR_MAG != 0) {
-            result["mag_x"] = calParams.calibrateMag(readI16(), 0)
-            result["mag_y"] = calParams.calibrateMag(readI16(), 1)
-            result["mag_z"] = calParams.calibrateMag(readI16(), 2)
+            result["mag_x"] = calParams.calibrateMag(readI16BE(), 0)  // X
+            result["mag_z"] = calParams.calibrateMag(readI16BE(), 2)  // Z (LSM303 order)
+            result["mag_y"] = calParams.calibrateMag(readI16BE(), 1)  // Y
         }
         if (b0 and ShimmerProtocol.SENSOR_EXG1_24BIT != 0) {
             if (remaining() > 0) offset++
