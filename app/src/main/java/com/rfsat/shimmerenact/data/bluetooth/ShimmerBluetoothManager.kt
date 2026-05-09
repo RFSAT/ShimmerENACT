@@ -119,15 +119,16 @@ class ShimmerBluetoothManager(private val context: Context) {
                 AppLog.i("BT", "Connecting (blocking)…")
                 s.connect()
                 socket = s
-                inputStream  = s.inputStream
-                outputStream = s.outputStream
+                val capturedInput  = s.inputStream
+                val capturedOutput = s.outputStream
+                inputStream  = capturedInput
+                outputStream = capturedOutput
                 AppLog.ok("BT", "Socket CONNECTED")
                 _connectionState.value = ConnectionState.CONNECTED
 
-                AppLog.i("BT", "Sending INQUIRY (0x${"%02X".format(ShimmerProtocol.CMD_INQUIRY.toInt() and 0xFF)})…")
+                AppLog.i("BT", "Sending INQUIRY…")
                 runInquiry(config)
 
-                // ── Set hardware sampling rate ────────────────────────────────
                 AppLog.i("BT", "Setting hardware rate: ${config.hardwareRateHz} Hz…")
                 val rateCmd = ShimmerProtocol.buildRateCommand(config.hardwareRateHz)
                 sendCommand(rateCmd)
@@ -139,11 +140,10 @@ class ShimmerBluetoothManager(private val context: Context) {
 
                 AppLog.i("BT", "Sending START_STREAMING…")
                 sendCommand(byteArrayOf(ShimmerProtocol.CMD_START_STREAMING))
-                // Discard the ACK byte (0xFF) that the device sends for every command
                 readAckWithTimeout(1000L)
                 AppLog.ok("BT", "Streaming started — listening for data packets…")
 
-                startStreamLoop(config)
+                startStreamLoop(config, capturedInput)
 
             } catch (e: Exception) {
                 val msg = "${e.javaClass.simpleName}: ${e.message}"
@@ -296,7 +296,7 @@ class ShimmerBluetoothManager(private val context: Context) {
         }
 
 
-    private fun startStreamLoop(config: SensorConfig) {
+    private fun startStreamLoop(config: SensorConfig, stream: java.io.InputStream) {
         meterWindowStart = System.currentTimeMillis(); meterCount = 0; lastSpsLog = System.currentTimeMillis()
         var totalPackets = 0L; var badBytes = 0
 
@@ -319,7 +319,7 @@ class ShimmerBluetoothManager(private val context: Context) {
             .ifEmpty { "none (all at hardware rate)" })
 
         streamJob = scope.launch {
-            val inStream = inputStream ?: run { AppLog.e("BT", "InputStream null — aborting stream loop"); return@launch }
+            val inStream = stream  // captured before any disconnect can null the field
             var consecutiveErrors = 0
             val pktSize = estimatePacketSize()
             AppLog.i("BT", "Stream started — pkt=${pktSize}B, channels(${channelList.size}): " +
