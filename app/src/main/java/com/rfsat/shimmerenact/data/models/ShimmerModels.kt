@@ -21,7 +21,7 @@ enum class SensorType(
 //   • ADS1292 ExG:       125, 250, 500, 1000, 2000, 4000 Hz (ADC clock steps)
 //   • GSR / PPG (ADC):   1–6000 Hz (firmware ADC)
 //   • Battery:           1–10 Hz (slow, no point faster)
-//   • Temperature:       1–10 Hz
+//   • Battery ADC
 
 data class RateConstraints(
     val minHz: Int,
@@ -72,7 +72,6 @@ val GSR_SIGNALS = listOf(
     ShimmerSignal("mag_x",     "Mag X",       "µT",   0xFFE04040, -1000.0, 1000.0, RATE_MAG),
     ShimmerSignal("mag_y",     "Mag Y",       "µT",   0xFF40E040, -1000.0, 1000.0, RATE_MAG),
     ShimmerSignal("mag_z",     "Mag Z",       "µT",   0xFF4040E0, -1000.0, 1000.0, RATE_MAG),
-    ShimmerSignal("temp_c",    "Temperature", "°C",   0xFFFF8C00, -40.0, 85.0,     RATE_SLOW),
     ShimmerSignal("batt_mv",   "Battery",     "mV",   0xFF888888, 0.0, 4500.0,     RATE_SLOW)
 )
 

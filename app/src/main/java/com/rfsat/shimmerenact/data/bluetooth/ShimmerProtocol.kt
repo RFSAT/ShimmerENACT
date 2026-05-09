@@ -148,11 +148,6 @@ object ShimmerPacketParser {
     ): Map<String, Double> {
         val result = mutableMapOf<String, Double>()
         var offset = 0
-        // Log channel list on first call to help diagnose unknown codes
-        if (raw.isNotEmpty()) {
-            AppLog.i("PKT", "Parse: ${channels.size} channels [" +
-                channels.joinToString { "0x%02X".format(it) } + "] pkt=${raw.size}B")
-        }
 
         fun remaining() = raw.size - offset
         fun readU16(): Int {
@@ -207,9 +202,10 @@ object ShimmerPacketParser {
                     val v = readI16()
                     if ("accel_z" !in result) result["accel_z"] = calParams.calibrateAccel(v, 2)
                 }
+                // LSM303DLHC magnetometer sends data in order: X, Z, Y (not X, Y, Z)
                 ShimmerProtocol.CH_MAG_X       -> result["mag_x"]   = calParams.calibrateMag(readI16BE(), 0)
-                ShimmerProtocol.CH_MAG_Y       -> result["mag_y"]   = calParams.calibrateMag(readI16BE(), 1)
-                ShimmerProtocol.CH_MAG_Z       -> result["mag_z"]   = calParams.calibrateMag(readI16BE(), 2)
+                ShimmerProtocol.CH_MAG_Y       -> result["mag_z"]   = calParams.calibrateMag(readI16BE(), 2)  // Z data in Y slot
+                ShimmerProtocol.CH_MAG_Z       -> result["mag_y"]   = calParams.calibrateMag(readI16BE(), 1)  // Y data in Z slot
                 ShimmerProtocol.CH_VBATT       -> result["batt_mv"] = readAdc12() * (3000.0 / 4095.0) * 2.0
                 ShimmerProtocol.CH_GSR         -> result["gsr_kohm"] = calParams.calibrateGsr(readAdc12())
                 ShimmerProtocol.CH_EXP_A0      -> result["ppg_mv"]  = calParams.calibratePpg(readAdc12())
