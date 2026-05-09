@@ -183,39 +183,27 @@ class ShimmerBluetoothManager(private val context: Context) {
         AppLog.ok("BT", "=== Inquiry raw (${response?.size ?: 0}B): " +
             (response?.take(20)?.joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } ?: "null") + " ===")
 
-        // The Shimmer3 may send: [0xFF ACK][0x02 code][rate×2][bitmap×3][nch][codes...]
-        // or just:               [0x02 code][rate×2][bitmap×3][nch][codes...]
-        // Detect which case by checking the first byte and adjust offset accordingly.
-        val bodyStart = if (response != null && response.isNotEmpty() &&
-            response[0].toInt() and 0xFF == 0xFF) 1 else 0
+        // readResponseWithTimeout scans for and discards all bytes up to and
+        // including 0x02, then reads the body. Response is always:
+        // [0x02][rate_lo][rate_hi][bm0][bm1][bm2][nch][codes...]
+        val minLen = 7  // 0x02(1) + rate(2) + bitmap(3) + nch(1)
 
-        // Inquiry response layout:
-        //   [0] = 0xFF (ACK)
-        // Body layout (from bodyStart): [0x02][rate_lo][rate_hi][bm0][bm1][bm2][nch][codes...]
-        val minBodyLen = 7   // response-code(1) + rate(2) + bitmap(3) + nch(1)
-
-        if (response != null && response.size >= bodyStart + minBodyLen) {
-            val b = bodyStart  // short alias
-            sensorBitmap[0] = response[b + 3].toInt() and 0xFF
-            sensorBitmap[1] = response[b + 4].toInt() and 0xFF
-            sensorBitmap[2] = response[b + 5].toInt() and 0xFF
+        if (response != null && response.size >= minLen) {
+            sensorBitmap[0] = response[3].toInt() and 0xFF
+            sensorBitmap[1] = response[4].toInt() and 0xFF
+            sensorBitmap[2] = response[5].toInt() and 0xFF
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
 
-            val regLo   = response[b + 1].toInt() and 0xFF
-            val regHi   = response[b + 2].toInt() and 0xFF
-            val regVal  = regLo or (regHi shl 8)
-            val actualHz = ShimmerProtocol.registerToHz(regVal)
+            val regLo    = response[1].toInt() and 0xFF
+            val regHi    = response[2].toInt() and 0xFF
+            val actualHz = ShimmerProtocol.registerToHz(regLo or (regHi shl 8))
 
-            val numChannels = response[b + 6].toInt() and 0xFF
-            val codesStart  = b + 7
-            channelList = if (numChannels > 0 && response.size >= codesStart + numChannels) {
-                (0 until numChannels).map {
-                    response[codesStart + it].toInt() and 0xFF
-                }
+            val numChannels = response[6].toInt() and 0xFF
+            channelList = if (numChannels > 0 && response.size >= 7 + numChannels) {
+                (0 until numChannels).map { response[7 + it].toInt() and 0xFF }
             } else emptyList()
 
-            AppLog.ok("BT", "Inquiry OK (bodyStart=$bodyStart) — " +
-                "bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): %s".format(
+            AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): %s".format(
                 sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz, numChannels,
                 channelList.joinToString { "0x%02X".format(it) }))
             AppLog.i("BT", "Full response (${response.size}B): " +
@@ -260,46 +248,56 @@ class ShimmerBluetoothManager(private val context: Context) {
             } ?: false
         }
 
-    // ── Read Shimmer3 inquiry response — ACK may or may not be prepended ─────
-    // Reads until we have the full response including all channel codes.
-    // Handles both [0xFF][0x02][...] and [0x02][...] formats.
+    // Read Shimmer3 inquiry response. Scans forward until 0x02 (INQUIRY_RESPONSE
+    // code) is found, then reads the 6-byte fixed header and variable channel codes.
+    // This is robust against any number of leading ACK/stale bytes.
     private suspend fun readResponseWithTimeout(timeoutMs: Long): ByteArray? =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
                 val stream = inputStream ?: return@withTimeoutOrNull null
-                val buf = ByteArray(256)
-                var total = 0
+                val inqCode = ShimmerProtocol.INQUIRY_RESPONSE.toInt() and 0xFF
 
-                // Read at least 8 bytes (covers ACK + 7 body bytes, or just 7 body bytes + 1 spare)
-                val minRead = 8
-                while (total < minRead) {
-                    val n = try {
-                        stream.read(buf, total, minRead - total)
-                    } catch (_: Exception) { return@withTimeoutOrNull null }
+                // Step 1: scan for 0x02, discarding any leading bytes (ACKs, stale data)
+                var foundCode = false
+                repeat(16) {
+                    if (foundCode) return@repeat
+                    val b = try { stream.read() } catch (_: Exception) { return@withTimeoutOrNull null }
+                    if (b == -1) return@withTimeoutOrNull null
+                    AppLog.i("BT", "Inq scan: 0x%02X%s".format(b, if (b == inqCode) " ← INQUIRY_RESPONSE" else ""))
+                    if (b == inqCode) foundCode = true
+                }
+                if (!foundCode) {
+                    AppLog.w("BT", "Inquiry 0x02 not found in first 16 bytes")
+                    return@withTimeoutOrNull null
+                }
+
+                // Step 2: read 6 bytes: rate_lo, rate_hi, bm0, bm1, bm2, nch
+                val header = ByteArray(6)
+                var got = 0
+                while (got < 6) {
+                    val n = try { stream.read(header, got, 6 - got) }
+                    catch (_: Exception) { return@withTimeoutOrNull null }
                     if (n <= 0) return@withTimeoutOrNull null
-                    total += n
+                    got += n
                 }
 
-                // Determine if ACK is present and find body start
-                val bodyStart = if (buf[0].toInt() and 0xFF == 0xFF) 1 else 0
-
-                // Channel count is at bodyStart+6
-                val nchOffset = bodyStart + 6
-                if (total <= nchOffset) return@withTimeoutOrNull buf.copyOf(total)
-
-                val numChannels = buf[nchOffset].toInt() and 0xFF
-                val targetTotal = nchOffset + 1 + numChannels
-
-                // Read remaining channel codes
-                while (total < targetTotal && total < buf.size) {
-                    val n = try {
-                        stream.read(buf, total, targetTotal - total)
-                    } catch (_: Exception) { break }
+                // Step 3: read channel codes
+                val numChannels = header[5].toInt() and 0xFF
+                val codes = ByteArray(numChannels)
+                var codeGot = 0
+                while (codeGot < numChannels) {
+                    val n = try { stream.read(codes, codeGot, numChannels - codeGot) }
+                    catch (_: Exception) { break }
                     if (n <= 0) break
-                    total += n
+                    codeGot += n
                 }
 
-                if (total > 0) buf.copyOf(total) else null
+                // Assemble: [0x02][rate_lo][rate_hi][bm0][bm1][bm2][nch][codes...]
+                val result = ByteArray(1 + 6 + codeGot)
+                result[0] = ShimmerProtocol.INQUIRY_RESPONSE
+                header.copyInto(result, 1)
+                codes.copyInto(result, 7, 0, codeGot)
+                result
             }
         }
 

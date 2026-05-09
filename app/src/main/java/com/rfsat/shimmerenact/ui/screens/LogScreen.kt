@@ -37,21 +37,24 @@ fun LogScreen(onBack: () -> Unit) {
     var showDebug   by remember { mutableStateOf(false) }
     var filterLevel by remember { mutableStateOf<LogLevel?>(null) }
 
-    // ── Snapshot entries on a 250ms timer instead of recomposing on every BT packet ──
-    // AppLog.entries fires at up to 250 Hz during streaming.  Polling at 250ms
-    // gives a responsive-feeling log without burning the UI thread.
+    // Poll AppLog every 250ms. Using mutableStateOf so derivedStateOf below
+    // correctly tracks snapshot as a dependency and recomputes filtered.
     var snapshot by remember { mutableStateOf(AppLog.entries.value) }
     LaunchedEffect(Unit) {
         while (true) {
             delay(250)
-            snapshot = AppLog.entries.value
+            val latest = AppLog.entries.value
+            if (latest !== snapshot) snapshot = latest  // reference check avoids spurious recomposition
         }
     }
 
-    val filtered = remember(snapshot, showDebug, filterLevel) {
-        snapshot.filter { e ->
-            (showDebug || e.level != LogLevel.DEBUG) &&
-            (filterLevel == null || e.level == filterLevel)
+    val filtered by remember(showDebug, filterLevel) {
+        derivedStateOf {
+            val s = snapshot  // read snapshot inside derivedStateOf so it tracks it
+            s.filter { e ->
+                (showDebug || e.level != LogLevel.DEBUG) &&
+                (filterLevel == null || e.level == filterLevel)
+            }
         }
     }
 

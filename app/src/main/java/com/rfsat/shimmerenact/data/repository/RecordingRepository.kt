@@ -42,10 +42,10 @@ data class RecordingSession(
 
 class RecordingRepository(private val context: Context) {
 
-    private val channels = mutableListOf<SignalChannel>()
+    private val channels = java.util.concurrent.CopyOnWriteArrayList<SignalChannel>()
     private var sessionId: String = ""
     private var sessionDir: File? = null
-    private var _isRecording = false
+    @Volatile private var _isRecording = false
     private var _totalSamplesWritten = 0L
 
     private val sessionDateFmt = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
@@ -111,7 +111,6 @@ class RecordingRepository(private val context: Context) {
     }
 
     // ─── Write a hardware sample — applies per-channel decimation ─────────────
-    // Call from the hot sample path; runs on IO dispatcher via ViewModel coroutine.
     fun writeSampleSync(sample: ShimmerSample) {
         if (!_isRecording || channels.isEmpty()) return
         val isoTs = isoFmt.format(Date(sample.timestampMs))
@@ -121,24 +120,40 @@ class RecordingRepository(private val context: Context) {
             ch.counter++
             if (ch.counter >= ch.decimationStep) {
                 ch.counter = 0
-                ch.writer.write("$isoTs,${sample.timestampMs},${"%.6f".format(v)}\n")
-                ch.rowsWritten++
-                wrote = true
+                try {
+                    ch.writer.write("$isoTs,${sample.timestampMs},${"%.6f".format(v)}\n")
+                    ch.rowsWritten++
+                    wrote = true
+                } catch (_: Exception) {
+                    // Writer closed mid-flight (stop race) — ignore silently
+                }
             }
         }
         if (wrote) {
             _totalSamplesWritten++
-            // Flush every 200 written rows (across all channels) to keep data safe
             if (_totalSamplesWritten % 200L == 0L) {
                 channels.forEach { runCatching { it.writer.flush() } }
             }
         }
     }
 
+    /** Emergency reset — call if the app detects recording stuck in bad state. */
+    fun resetRecordingState() {
+        channels.forEach { runCatching { it.writer.close() } }
+        channels.clear()
+        _isRecording = false
+        _totalSamplesWritten = 0L
+        AppLog.w("REC", "Recording state forcibly reset")
+    }
+
     // ─── Stop recording ───────────────────────────────────────────────────────
     suspend fun stopRecording(): Result<RecordingSession> = withContext(Dispatchers.IO) {
-        if (!_isRecording) return@withContext Result.failure(IllegalStateException("Not recording"))
-        _isRecording = false
+        if (!_isRecording) {
+            // May be in bad state — reset and report
+            resetRecordingState()
+            return@withContext Result.failure(IllegalStateException("Not recording"))
+        }
+        _isRecording = false  // Set false FIRST so writeSampleSync stops writing
         val endTs = isoFmt.format(Date())
         val files = mutableListOf<RecordingFile>()
         for (ch in channels) {
@@ -162,18 +177,18 @@ class RecordingRepository(private val context: Context) {
                 AppLog.e("REC", "Error closing ${ch.signal.key}: ${e.message}")
             }
         }
+        channels.clear()
         val session = RecordingSession(
             sessionId = sessionId,
-            deviceName = sessionDir?.parentFile?.name ?: "",
-            startTimeMs = sessionDateFmt.parse(sessionId)?.time ?: 0L,
+            deviceName = sessionDir?.name?.substringBeforeLast("_") ?: "",
+            startTimeMs = runCatching { sessionDateFmt.parse(sessionId)?.time ?: 0L }.getOrDefault(0L),
             files = files
         )
-        channels.clear()
-        AppLog.ok("REC", "Session stopped — ${files.size} files, $_totalSamplesWritten rows total")
+        AppLog.ok("REC", "Session stopped — ${files.size} files, $_totalSamplesWritten rows")
         Result.success(session)
     }
 
-    // ─── List sessions (grouped by session sub-directory) ─────────────────────
+    // ─── List sessions ────────────────────────────────────────────────────────
     suspend fun listSessions(): List<RecordingSession> = withContext(Dispatchers.IO) {
         val root = getRootDir()
         root.listFiles { f -> f.isDirectory }
@@ -182,7 +197,6 @@ class RecordingRepository(private val context: Context) {
                 val csvFiles = dir.listFiles { f -> f.extension == "csv" }
                     ?.sortedBy { it.name }
                     ?.map { f ->
-                        // Parse rate from header comment if present
                         val rate = f.bufferedReader().useLines { lines ->
                             lines.find { it.startsWith("# Output rate:") }
                                 ?.substringAfter("Output rate:")
@@ -206,7 +220,6 @@ class RecordingRepository(private val context: Context) {
                             rowCount = rows
                         )
                     } ?: emptyList()
-
                 RecordingSession(
                     sessionId = dir.name,
                     deviceName = dir.name.substringBeforeLast("_"),
@@ -227,10 +240,22 @@ class RecordingRepository(private val context: Context) {
         File(path).delete()
     }
 
+    // ─── Storage location: Downloads/ShimmerENACT ─────────────────────────────
+    // Uses the public Downloads folder so files are accessible via any file manager.
+    // Requires no special permissions on Android 10+ (files in public downloads
+    // created by the app are accessible without READ_EXTERNAL_STORAGE).
     private fun getRootDir(): File {
-        val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-            ?: context.filesDir   // fall back to internal storage if external not available
-        return File(extDir, "ShimmerENACT").also { if (!it.exists()) it.mkdirs() }
+        // Primary: public Downloads/ShimmerENACT — accessible in any file manager.
+        // Android 10+ doesn't need WRITE_EXTERNAL_STORAGE for this path.
+        // Fallback: app-specific external storage (always writable, no permission needed).
+        val downloadsDir = try {
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                ?.takeIf { it.exists() || it.mkdirs() }
+        } catch (_: Exception) { null }
+        val base = downloadsDir
+            ?: context.getExternalFilesDir(null)
+            ?: context.filesDir
+        return File(base, "ShimmerENACT").also { if (!it.exists()) it.mkdirs() }
     }
 }
 
