@@ -43,12 +43,13 @@ object ShimmerProtocol {
     const val CH_ACCEL_X:        Int = 0x01  // 2 bytes (ADXL345 low-noise)
     const val CH_ACCEL_Y:        Int = 0x02
     const val CH_ACCEL_Z:        Int = 0x03
-    // Gyro: single code 0x04 covers all 3 axes as a 6-byte big-endian block
-    const val CH_GYRO:           Int = 0x04  // 6 bytes: X_hi,X_lo, Y_hi,Y_lo, Z_hi,Z_lo
-    // Mag: single code 0x07 covers all 3 axes, LSM303 sends X,Z,Y order
-    const val CH_MAG:            Int = 0x07  // 6 bytes: X_hi,X_lo, Z_hi,Z_lo, Y_hi,Y_lo
-    // Individual mag axis codes (if firmware sends them separately)
-    const val CH_MAG_X:          Int = 0x07
+    // Confirmed from actual device inquiry response (22B):
+    // Channel codes in packet order:
+    // 0x0C=PPG, 0x01=?, 0x00=TIMESTAMP(3B), 0x01=AccX, 0x02=AccY, 0x03=AccZ,
+    // 0x12=GYRO(6B), 0x1C=MAG(6B), 0x0A=BATT
+    const val CH_GYRO:           Int = 0x12  // 6 bytes: GX_hi,GX_lo,GY_hi,GY_lo,GZ_hi,GZ_lo
+    const val CH_MAG:            Int = 0x1C  // 6 bytes: MX_hi,MX_lo,MZ_hi,MZ_lo,MY_hi,MY_lo
+    const val CH_MAG_X:          Int = 0x07  // individual axis fallback
     const val CH_MAG_Y:          Int = 0x08
     const val CH_MAG_Z:          Int = 0x09
     const val CH_VBATT:          Int = 0x0A  // 2 bytes
@@ -74,7 +75,8 @@ object ShimmerProtocol {
     /** Width in bytes for each channel code. */
     fun channelWidth(code: Int): Int = when (code) {
         CH_TIMESTAMP                                                -> 3
-        CH_GYRO, CH_MAG                                             -> 6
+        CH_GYRO, CH_MAG,
+        0x12, 0x1C                                               -> 6  // confirmed gyro+mag codes
         CH_EXG1_STATUS, CH_EXG2_STATUS,
         CH_EXG1_STATUS_16, CH_EXG2_STATUS_16                       -> 1
         CH_EXG1_CH1_24, CH_EXG1_CH2_24,

@@ -74,35 +74,27 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     // Derived from the sensorBitmapFlow; the BT manager updates this after inquiry.
     // Empty set = not yet connected (treat as "all supported" in the UI).
     val supportedSignalKeys: StateFlow<Set<String>> =
-        btManager.sensorBitmapFlow.map { bitmap ->
-            if (bitmap.all { it == 0 }) return@map emptySet()
-            val b0 = bitmap[0]; val b1 = bitmap[1]; val b2 = bitmap[2]
-            AppLog.i("VM", "Bitmap: 0x%02X 0x%02X 0x%02X  gyro=%s accel=%s gsr=%s ppg=%s".format(
-                b0, b1, b2,
-                if (b0 and ShimmerProtocol.SENSOR_GYRO != 0) "Y" else "N",
-                if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0) "Y" else "N",
-                if (b0 and ShimmerProtocol.SENSOR_GSR != 0) "Y" else "N",
-                if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0 != 0) "Y" else "N"))
+        // Derive from channel list (authoritative) rather than bitmap.
+        // The bitmap byte order varies by firmware; the channel list is always correct.
+        btManager.channelListFlow.map { channels ->
+            if (channels.isEmpty()) return@map emptySet()
             val keys = mutableSetOf<String>()
-            if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0 ||
-                b1 and ShimmerProtocol.SENSOR_b1_D_ACCEL != 0)
-                keys += listOf("accel_x", "accel_y", "accel_z")
-            if (b0 and ShimmerProtocol.SENSOR_GYRO != 0)
-                keys += listOf("gyro_x", "gyro_y", "gyro_z")
-            if (b0 and ShimmerProtocol.SENSOR_MAG != 0)
-                keys += listOf("mag_x", "mag_y", "mag_z")
-            if (b0 and ShimmerProtocol.SENSOR_EXG1_24BIT != 0 ||
-                b2 and ShimmerProtocol.SENSOR_EXG1_16BIT != 0)
-                keys += listOf("exg1_ch1", "exg1_ch2")
-            if (b0 and ShimmerProtocol.SENSOR_EXG2_24BIT != 0 ||
-                b2 and ShimmerProtocol.SENSOR_EXG2_16BIT != 0)
-                keys += listOf("exg2_ch1", "exg2_ch2")
-            if (b0 and ShimmerProtocol.SENSOR_GSR           != 0) keys += "gsr_kohm"
-            if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0  != 0) keys += "ppg_mv"
-            if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A7  != 0) keys += "ch_a7"
-            if (b1 and ShimmerProtocol.SENSOR_b1_VBATT      != 0) keys += "batt_mv"
-            // Intersect with signals defined for this sensor type so we never
-            // show an "available" badge for a channel the app doesn't model
+            for (ch in channels) {
+                when (ch) {
+                    ShimmerProtocol.CH_ACCEL_X     -> keys += listOf("accel_x", "accel_y", "accel_z")
+                    ShimmerProtocol.CH_GYRO        -> keys += listOf("gyro_x", "gyro_y", "gyro_z")
+                    ShimmerProtocol.CH_MAG         -> keys += listOf("mag_x", "mag_y", "mag_z")
+                    ShimmerProtocol.CH_MAG_X       -> keys += listOf("mag_x", "mag_y", "mag_z")
+                    ShimmerProtocol.CH_GSR         -> keys += "gsr_kohm"
+                    ShimmerProtocol.CH_EXP_A0      -> keys += "ppg_mv"
+                    ShimmerProtocol.CH_VBATT       -> keys += "batt_mv"
+                    ShimmerProtocol.CH_EXG1_CH1_24,
+                    ShimmerProtocol.CH_EXG1_CH1_16 -> keys += listOf("exg1_ch1", "exg1_ch2")
+                    ShimmerProtocol.CH_EXG2_CH1_24,
+                    ShimmerProtocol.CH_EXG2_CH1_16 -> keys += listOf("exg2_ch1", "exg2_ch2")
+                }
+            }
+            AppLog.i("VM", "Supported keys from channels: $keys")
             val defined = signalsForType(_activeSensorType.value).map { it.key }.toSet()
             keys.intersect(defined)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())

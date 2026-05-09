@@ -26,7 +26,8 @@ class ShimmerBluetoothManager(private val context: Context) {
 
     private val _sensorBitmapFlow = MutableStateFlow(intArrayOf(0, 0, 0))
     /** The 3-byte sensor bitmap received from the device (or default). */
-    val sensorBitmapFlow: StateFlow<IntArray> = _sensorBitmapFlow.asStateFlow()
+    val sensorBitmapFlow: StateFlow<IntArray>  = _sensorBitmapFlow.asStateFlow()
+    val channelListFlow:  StateFlow<List<Int>> = _channelListFlow.asStateFlow()
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -172,72 +173,68 @@ class ShimmerBluetoothManager(private val context: Context) {
     // The Shimmer3 responds with: [0xFF ACK][rate_lo][rate_hi][bm0][bm1][bm2][nch][ch...]
     // We log every byte received so we can debug any framing issues.
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
-        AppLog.i("BT", "Sending INQUIRY (0x01)…")
+        AppLog.i("BT", "Sending INQUIRY…")
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
 
-        // Collect all bytes that arrive within 2 seconds
-        val buf = ByteArray(64)
-        var total = 0
-        val deadline = System.currentTimeMillis() + 2000L
-        while (System.currentTimeMillis() < deadline && total < buf.size) {
-            val stream = inputStream ?: break
-            val avail = try { stream.available() } catch (_: Exception) { break }
-            if (avail > 0) {
-                val n = try { stream.read(buf, total, minOf(avail, buf.size - total)) }
-                        catch (_: Exception) { break }
-                if (n > 0) total += n
-            } else {
-                kotlinx.coroutines.delay(20)
-            }
-        }
-
-        AppLog.ok("BT", "=== Inquiry response (${total}B): " +
-            buf.take(total).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } + " ===")
-
-        if (total < 6) {
-            AppLog.w("BT", "Inquiry too short — using default bitmap")
+        // Read inquiry response using blocking reads (available() is unreliable on BT).
+        // Format: [0xFF ACK][rate_lo][rate_hi][bm0][bm1][bm2][nch][ch0..chN]
+        val stream = inputStream ?: run {
+            AppLog.e("BT", "No stream for inquiry")
             sensorBitmap = defaultBitmapForType(config.sensorType)
-            channelList  = emptyList()
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
             return@withContext
         }
 
-        // Format: [0xFF] [rate_lo] [rate_hi] [bm0] [bm1] [bm2] [nch] [ch0..chN]
-        // Skip leading 0xFF ACK byte(s) — there may be one or two.
-        // Then read fixed layout: 6 header bytes + nch channel codes.
-        // Log full response so we can verify the offset.
-        var i = 0
-        while (i < total && buf[i].toInt() and 0xFF == 0xFF) i++
+        // Shimmer3 inquiry response: [0xFF ACK][0x02 code][rate_lo][rate_hi][bm0][bm1][bm2][nch][codes]
+        // Read and discard 0xFF ACK and 0x02 response code, then read 6 header bytes.
+        val b0 = try { stream.read() } catch (_: Exception) { -1 }
+        val b1 = try { stream.read() } catch (_: Exception) { -1 }
+        AppLog.i("BT", "Inquiry prefix: 0x%02X 0x%02X".format(b0, b1))
+        // b0 should be 0xFF, b1 should be 0x02 — discard both
 
-        AppLog.i("BT", "Inquiry body at offset $i/${total}: " +
-            buf.drop(i).take(10).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+        // Step 2: read 6 header bytes: rate_lo, rate_hi, bm0, bm1, bm2, nch
+        val header = ByteArray(6)
+        var got = 0
+        while (got < 6) {
+            val n = try { stream.read(header, got, 6 - got) } catch (_: Exception) { -1 }
+            if (n == -1) break
+            got += n
+        }
+        AppLog.i("BT", "Inquiry header ($got/6B): " +
+            header.take(got).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
 
-        // Minimum body: rate(2) + bitmap(3) + nch(1) = 6 bytes
-        if (i + 6 > total) {
-            AppLog.w("BT", "Inquiry body too short ($total bytes, body at $i) — using default bitmap")
+        if (got < 6) {
+            AppLog.w("BT", "Inquiry header too short ($got bytes) — using default bitmap")
             sensorBitmap = defaultBitmapForType(config.sensorType)
-            channelList  = emptyList()
             _sensorBitmapFlow.value = sensorBitmap.copyOf()
             return@withContext
         }
 
-        val regLo    = buf[i + 0].toInt() and 0xFF
-        val regHi    = buf[i + 1].toInt() and 0xFF
-        val actualHz = ShimmerProtocol.registerToHz(regLo or (regHi shl 8))
-        sensorBitmap[0] = buf[i + 2].toInt() and 0xFF
-        sensorBitmap[1] = buf[i + 3].toInt() and 0xFF
-        sensorBitmap[2] = buf[i + 4].toInt() and 0xFF
+        // Step 3: parse header
+        val regLo = header[0].toInt() and 0xFF
+        val regHi = header[1].toInt() and 0xFF
+        sensorBitmap[0] = header[2].toInt() and 0xFF
+        sensorBitmap[1] = header[3].toInt() and 0xFF
+        sensorBitmap[2] = header[4].toInt() and 0xFF
         _sensorBitmapFlow.value = sensorBitmap.copyOf()
-        val nch = buf[i + 5].toInt() and 0xFF
+        val nch = header[5].toInt() and 0xFF
+        val actualHz = ShimmerProtocol.registerToHz(regLo or (regHi shl 8))
 
-        channelList = if (nch in 1..20 && i + 6 + nch <= total) {
-            (0 until nch).map { buf[i + 6 + it].toInt() and 0xFF }
-        } else {
-            AppLog.w("BT", "nch=$nch out of range or beyond buffer — using default bitmap")
-            emptyList()
+        // Step 4: read channel codes
+        val codes = ByteArray(nch.coerceIn(0, 32))
+        var codeGot = 0
+        while (codeGot < nch) {
+            val n = try { stream.read(codes, codeGot, nch - codeGot) } catch (_: Exception) { break }
+            if (n == -1) break
+            codeGot += n
         }
 
-        AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): [%s]".format(
+        channelList = if (codeGot == nch && nch > 0) {
+            (0 until nch).map { codes[it].toInt() and 0xFF }
+        } else emptyList()
+
+        _channelListFlow.value = channelList
+        AppLog.ok("BT", "Inquiry OK — bitmap: 0x%02X 0x%02X 0x%02X  %dHz  channels(%d): [%s]".format(
             sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz, nch,
             channelList.joinToString { "0x%02X".format(it) }))
     }
