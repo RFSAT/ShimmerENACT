@@ -140,7 +140,8 @@ class ShimmerBluetoothManager(private val context: Context) {
 
                 AppLog.i("BT", "Sending START_STREAMING…")
                 sendCommand(byteArrayOf(ShimmerProtocol.CMD_START_STREAMING))
-                readAckWithTimeout(1000L)
+                // Do NOT consume the 0xFF ACK here — the stream loop skips non-0x00
+                // bytes naturally. Consuming it risks eating the first data delimiter.
                 AppLog.ok("BT", "Streaming started — listening for data packets…")
 
                 startStreamLoop(config, capturedInput)
@@ -235,15 +236,24 @@ class ShimmerBluetoothManager(private val context: Context) {
             ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0, 0, 0)
     }
 
-    // ── Read a simple 1-byte ACK from a command response ─────────────────────
-    // Most commands get a single 0xFF ACK byte. Reading this quickly is critical
-    // because the Shimmer3 may time out if the host doesn't proceed promptly.
+    // Read a single 0xFF ACK from the device.
+    // Reads up to timeoutMs waiting for 0xFF. Discards any leading 0xFF bytes.
+    // If a non-0xFF byte is read, it's lost — caller should not rely on this
+    // for exact byte accounting when streaming may have already started.
     private suspend fun readAckWithTimeout(timeoutMs: Long = 500L): Boolean =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
                 val stream = inputStream ?: return@withTimeoutOrNull false
-                val b = try { stream.read() } catch (_: Exception) { return@withTimeoutOrNull false }
-                b == (ShimmerProtocol.ACK.toInt() and 0xFF)
+                // Read bytes until we see 0xFF or timeout
+                repeat(4) {
+                    val b = try { stream.read() } catch (_: Exception) { return@withTimeoutOrNull false }
+                    if (b == -1) return@withTimeoutOrNull false
+                    if (b == (ShimmerProtocol.ACK.toInt() and 0xFF)) return@withTimeoutOrNull true
+                    // Non-ACK byte — could be start of data stream; stop reading
+                    AppLog.d("BT", "readAck: unexpected 0x%02X".format(b))
+                    return@withTimeoutOrNull false
+                }
+                false
             } ?: false
         }
 
@@ -325,18 +335,32 @@ class ShimmerBluetoothManager(private val context: Context) {
             AppLog.i("BT", "Stream started — pkt=${pktSize}B, channels(${channelList.size}): " +
                 channelList.joinToString { "0x%02X".format(it) })
             val packetBuf = ByteArray(256)
+            // Each Shimmer3 data packet is preceded by a single 0x00 byte.
+            // We read that byte first, then read exactly pktSize bytes.
+            // If we lose sync (too many bad bytes), resync by scanning for 0x00
+            // followed by a valid timestamp (first 3 bytes non-zero or reasonable).
+            var synced = false
+            var lastTimestamp = -1L
 
             while (isActive && _connectionState.value == ConnectionState.CONNECTED) {
                 try {
+                    // ── Sync: scan for 0x00 packet delimiter ──────────────────
                     val startByte = inStream.read()
                     if (startByte == -1) { AppLog.w("BT", "Stream EOF"); break }
 
-                    if (startByte.toByte() != ShimmerProtocol.PACKET_TYPE_DATA) {
-                        if (badBytes % 50 == 0) AppLog.d("BT", "Non-data byte 0x${"%02X".format(startByte)} (total skip=$badBytes)")
-                        badBytes++; continue
+                    if (startByte != 0x00) {
+                        if (synced) {
+                            // Lost sync — don't count isolated non-zero bytes as errors
+                            // since they could be high bytes of BE gyro values.
+                            // Instead skip and resync.
+                            synced = false
+                        }
+                        badBytes++
+                        if (badBytes % 100 == 0) AppLog.d("BT", "Resyncing — skipped $badBytes bytes")
+                        continue
                     }
 
-                    val expectedSize = estimatePacketSize()
+                    val expectedSize = pktSize
                     var bytesRead = 0
                     while (bytesRead < expectedSize) {
                         val n = inStream.read(packetBuf, bytesRead, expectedSize - bytesRead)
@@ -344,6 +368,17 @@ class ShimmerBluetoothManager(private val context: Context) {
                         bytesRead += n
                     }
                     if (bytesRead < 3) { AppLog.w("BT", "Packet too short: ${bytesRead}B"); continue }
+
+                    // Validate timestamp is plausible (monotonically non-decreasing)
+                    val ts = ((packetBuf[0].toInt() and 0xFF)) or
+                             ((packetBuf[1].toInt() and 0xFF) shl 8) or
+                             ((packetBuf[2].toInt() and 0xFF) shl 16)
+                    if (lastTimestamp >= 0 && ts < lastTimestamp - 65536) {
+                        // Timestamp went backward by more than wrap amount — likely misaligned
+                        synced = false; badBytes++; continue
+                    }
+                    lastTimestamp = ts.toLong()
+                    synced = true
 
                     val rawValues = ShimmerPacketParser.parse(
                         packetBuf.copyOf(bytesRead), sensorBitmap, calParams, channelList)
