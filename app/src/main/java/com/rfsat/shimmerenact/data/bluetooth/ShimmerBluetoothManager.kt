@@ -202,19 +202,6 @@ class ShimmerBluetoothManager(private val context: Context) {
             return@withContext
         }
 
-        // Find the body start: skip leading 0xFF bytes
-        var i = 0
-        while (i < total && buf[i].toInt() and 0xFF == 0xFF) i++
-
-        // Body: [rate_lo][rate_hi][bm0][bm1][bm2][nch][ch0..chN]
-        if (i + 6 > total) {
-            AppLog.w("BT", "Inquiry body too short at offset $i — using default bitmap")
-            sensorBitmap = defaultBitmapForType(config.sensorType)
-            channelList  = emptyList()
-            _sensorBitmapFlow.value = sensorBitmap.copyOf()
-            return@withContext
-        }
-
         // Format: [0xFF] [rate_lo] [rate_hi] [bm0] [bm1] [bm2] [nch] [ch0..chN]
         // Skip leading 0xFF ACK byte(s) — there may be one or two.
         // Then read fixed layout: 6 header bytes + nch channel codes.
