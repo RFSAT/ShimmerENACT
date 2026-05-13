@@ -51,7 +51,7 @@ class ShimmerBluetoothManager(private val context: Context) {
     private var streamJob: Job? = null
     private var sensorBitmap = intArrayOf(0, 0, 0)
     private var channelList: List<Int> = emptyList()  // from inquiry response, authoritative
-    private var calParams = CalibrationParams()
+    private var calParams = ShimmerProtocol.CalibrationParams()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sppUUID = UUID.fromString(ShimmerProtocol.SPP_UUID)
 
@@ -353,8 +353,8 @@ class ShimmerBluetoothManager(private val context: Context) {
                     }
                     if (bytesRead < 3) { AppLog.w("BT", "Packet too short: ${bytesRead}B"); continue }
 
-                    val rawValues = ShimmerPacketParser.parse(
-                        packetBuf.copyOf(bytesRead), sensorBitmap, calParams, channelList)
+                    val rawValues = ShimmerProtocol.ShimmerPacketParser.parse(
+                        packetBuf.copyOf(bytesRead), channelList, calParams)
 
                     if (rawValues.isEmpty()) {
                         if (totalPackets == 0L) {
