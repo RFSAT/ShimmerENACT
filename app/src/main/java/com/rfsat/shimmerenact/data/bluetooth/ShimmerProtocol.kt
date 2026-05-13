@@ -158,6 +158,11 @@ object ShimmerProtocol {
         var offset = 0
 
         fun remaining() = raw.size - offset
+
+        // Per official shimmer.py: timestamp is ALWAYS the first 3 bytes,
+        // regardless of what appears first in the channel list.
+        // Read it now, then parse the remaining channels in order,
+        // skipping any 0x00 (CH_TIMESTAMP) entries in the list.
         fun readU8(): Int {
             if (remaining() < 1) { offset++; return 0 }
             return raw[offset++].toInt() and 0xFF
@@ -188,10 +193,17 @@ object ShimmerProtocol {
         }
         fun readAdc12() = readU16() and 0x0FFF
 
+        // Always read timestamp first (implicit, always at bytes 0-2)
+        if (raw.size >= 3) {
+            val ts = readU24()
+            result["timestamp_ticks"] = ts.toDouble()
+        }
+
         var unknownLogged = false
         for (ch in channels) {
+            if (ch == CH_TIMESTAMP) continue  // already read above
             when (ch) {
-                CH_TIMESTAMP     -> result["timestamp_ticks"] = readU24().toDouble()
+                CH_TIMESTAMP     -> {}  // unreachable — handled above
                 CH_ACCEL_LN_X   -> result["accel_x"]   = calParams.calibrateAccel(readI16(), 0)
                 CH_ACCEL_LN_Y   -> result["accel_y"]   = calParams.calibrateAccel(readI16(), 1)
                 CH_ACCEL_LN_Z   -> result["accel_z"]   = calParams.calibrateAccel(readI16(), 2)

@@ -284,70 +284,21 @@ class ShimmerBluetoothManager(private val context: Context) {
                 channelList.joinToString { "0x%02X".format(it) })
             val packetBuf = ByteArray(256)
 
-            // ── Log first 32 raw bytes to determine actual packet framing ────
-            // Use a 3-second timeout — if nothing arrives, the device isn't streaming.
-            val probeBuf = ByteArray(32)
-            var probeGot = 0
-            val probeDeadline = System.currentTimeMillis() + 3000L
-            while (probeGot < 32 && System.currentTimeMillis() < probeDeadline) {
-                val avail = try { inStream.available() } catch (_: Exception) { break }
-                if (avail > 0) {
-                    val n = try { inStream.read(probeBuf, probeGot, minOf(avail, 32 - probeGot)) }
-                            catch (_: Exception) { break }
-                    if (n == -1) break
-                    probeGot += n
-                } else {
-                    kotlinx.coroutines.delay(50)
-                }
-            }
-            if (probeGot == 0) {
-                AppLog.e("BT", "=== No data received from device after 3s — START_STREAMING may have failed ===")
-            } else {
-                AppLog.ok("BT", "=== First ${probeGot}B from device: " +
-                    probeBuf.take(probeGot).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } + " ===")
-            }
 
-            // Push probe bytes into packetBuf so they are not lost.
-            // Determine delimiter: if first byte is 0x00, use sync-byte framing.
-            // Otherwise read continuously without a delimiter.
-            val useDelimiter = probeGot > 0 && probeBuf[0].toInt() and 0xFF == 0x00
-            AppLog.i("BT", "Framing: ${if (useDelimiter) "delimiter 0x00" else "continuous (no delimiter)"}")
-
-            // Prime the pipeline with probe bytes
-            var probeOffset = 0
-            fun readByte(): Int {
-                if (probeOffset < probeGot) return probeBuf[probeOffset++].toInt() and 0xFF
-                return inStream.read()
-            }
-            fun readBytes(buf: ByteArray, off: Int, len: Int): Int {
-                if (probeOffset >= probeGot) return inStream.read(buf, off, len)
-                val fromProbe = minOf(len, probeGot - probeOffset)
-                probeBuf.copyInto(buf, off, probeOffset, probeOffset + fromProbe)
-                probeOffset += fromProbe
-                if (fromProbe < len) {
-                    val rest = inStream.read(buf, off + fromProbe, len - fromProbe)
-                    return if (rest == -1) fromProbe else fromProbe + rest
-                }
-                return fromProbe
-            }
+            // Framing: read 0x00 sync byte, then pktSize bytes of channel data.
+            // Timestamp is always the first 3 bytes of the channel data (implicit).
 
             while (isActive && _connectionState.value == ConnectionState.CONNECTED) {
                 try {
-                    if (useDelimiter) {
-                        // Scan for 0x00 packet delimiter
-                        val startByte = readByte()
-                        if (startByte == -1) { AppLog.w("BT", "Stream EOF"); break }
-                        if (startByte != 0x00) { badBytes++; continue }
-                    }
+                    // Read and verify the 0x00 DATA_PACKET sync byte
+                    val startByte = inStream.read()
+                    if (startByte == -1) { AppLog.w("BT", "Stream EOF"); break }
+                    if (startByte != 0x00) { badBytes++; continue }
 
                     val expectedSize = pktSize
                     var bytesRead = 0
                     while (bytesRead < expectedSize) {
-                        val n = if (probeOffset < probeGot) {
-                            readBytes(packetBuf, bytesRead, expectedSize - bytesRead)
-                        } else {
-                            inStream.read(packetBuf, bytesRead, expectedSize - bytesRead)
-                        }
+                        val n = inStream.read(packetBuf, bytesRead, expectedSize - bytesRead)
                         if (n == -1) break
                         bytesRead += n
                     }
