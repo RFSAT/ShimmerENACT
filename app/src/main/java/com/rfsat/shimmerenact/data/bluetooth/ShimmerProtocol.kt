@@ -132,7 +132,9 @@ object ShimmerProtocol {
         fun calibrateAccel(raw: Int, axis: Int) = (raw - accelOffset[axis]) / accelSens
         fun calibrateGyro(raw: Int, axis: Int)  = (raw - gyroOffset[axis])  / gyroSens
         fun calibrateMag(raw: Int, axis: Int)   = (raw - magOffset[axis])   / magSens
-        fun calibrateBatt(raw: Int): Double     = raw * (3.0 / 4095.0) * 1000.0 * 2.0
+        // Battery: ADC reads through a ÷2 voltage divider, 3.0V reference
+        // Vbatt (mV) = (raw / 4095) × 3000 × 2
+        fun calibrateBatt(raw: Int): Double = (raw / 4095.0) * 3000.0 * 2.0
         fun calibrateGsr(raw: Int): Double {
             val r = if (raw == 0) 1.0 else raw.toDouble()
             return (1.0 / ((r / 4096.0 * 3.0) / 1000.0 + 1.0e-9)) / 1000.0
@@ -203,14 +205,28 @@ object ShimmerProtocol {
         for (ch in channels) {
             if (ch == CH_TIMESTAMP) continue  // already read above
             when (ch) {
+                // ── Empirical codes for SR48-5-0 firmware — MUST be first ──────
+                // These codes (0x12, 0x1C, 0x0A) coincide with official constants
+                // for OTHER sensors, so empirical entries must precede them to win
+                // the first-match rule of Kotlin when().
+                0x12 -> {  // Gyro XYZ block (6B BE) — verified empirically
+                    result["gyro_x"] = calParams.calibrateGyro(readI16BE(), 0)
+                    result["gyro_y"] = calParams.calibrateGyro(readI16BE(), 1)
+                    result["gyro_z"] = calParams.calibrateGyro(readI16BE(), 2)
+                }
+                0x1C -> {  // Mag XZY block (6B BE, LSM303 sends X,Z,Y order) — empirical
+                    result["mag_x"]  = calParams.calibrateMag(readI16BE(), 0)
+                    result["mag_z"]  = calParams.calibrateMag(readI16BE(), 2)
+                    result["mag_y"]  = calParams.calibrateMag(readI16BE(), 1)
+                }
+                0x0A -> result["batt_mv"]  = calParams.calibrateBatt(readAdc12())  // empirical
+                // ── Standard channel codes ────────────────────────────────────
                 CH_TIMESTAMP     -> {}  // unreachable — handled above
                 CH_ACCEL_LN_X   -> result["accel_x"]   = calParams.calibrateAccel(readI16(), 0)
                 CH_ACCEL_LN_Y   -> result["accel_y"]   = calParams.calibrateAccel(readI16(), 1)
                 CH_ACCEL_LN_Z   -> result["accel_z"]   = calParams.calibrateAccel(readI16(), 2)
                 CH_VBATT        -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())
-                0x0A            -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())  // empirical
                 CH_GSR          -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())
-                0x05            -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())     // empirical
                 CH_EXT_ADC_CH7  -> { readU16() }
                 CH_EXT_ADC_CH6  -> { readU16() }
                 CH_EXT_ADC_CH15 -> { readU16() }
@@ -241,18 +257,6 @@ object ShimmerProtocol {
                 CH_EXG1_CH2_16  -> result["exg1_ch2"]  = readI16BE().toDouble()
                 CH_EXG2_CH1_16  -> result["exg2_ch1"]  = readI16BE().toDouble()
                 CH_EXG2_CH2_16  -> result["exg2_ch2"]  = readI16BE().toDouble()
-                // Empirically verified on SR48-5-0 firmware: 0x12=Gyro 6B, 0x1C=Mag 6B
-                0x12 -> {
-                    result["gyro_x"] = calParams.calibrateGyro(readI16BE(), 0)
-                    result["gyro_y"] = calParams.calibrateGyro(readI16BE(), 1)
-                    result["gyro_z"] = calParams.calibrateGyro(readI16BE(), 2)
-                }
-                // LSM303 sends mag in order X, Z, Y
-                0x1C -> {
-                    result["mag_x"]  = calParams.calibrateMag(readI16BE(), 0)
-                    result["mag_z"]  = calParams.calibrateMag(readI16BE(), 2)
-                    result["mag_y"]  = calParams.calibrateMag(readI16BE(), 1)
-                }
                 else -> {
                     if (!unknownLogged) {
                         AppLog.i("PKT", "Unknown ch=0x%02X w=2 offset=$offset/${raw.size}".format(ch))
