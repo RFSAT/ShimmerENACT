@@ -81,20 +81,37 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             val keys = mutableSetOf<String>()
             for (ch in channels) {
                 when (ch) {
-                    ShimmerProtocol.CH_ACCEL_X     -> keys += listOf("accel_x", "accel_y", "accel_z")
-                    ShimmerProtocol.CH_GYRO        -> keys += listOf("gyro_x", "gyro_y", "gyro_z")
-                    ShimmerProtocol.CH_MAG         -> keys += listOf("mag_x", "mag_y", "mag_z")
-                    ShimmerProtocol.CH_MAG_X       -> keys += listOf("mag_x", "mag_y", "mag_z")
+                    // Low-noise accelerometer (any one axis means all three present)
+                    ShimmerProtocol.CH_ACCEL_LN_X,
+                    ShimmerProtocol.CH_ACCEL_LN_Y,
+                    ShimmerProtocol.CH_ACCEL_LN_Z -> keys += listOf("accel_x", "accel_y", "accel_z")
+                    // Wide-range accelerometer
+                    ShimmerProtocol.CH_ACCEL_WR_X,
+                    ShimmerProtocol.CH_ACCEL_WR_Y,
+                    ShimmerProtocol.CH_ACCEL_WR_Z -> keys += listOf("accel_wr_x", "accel_wr_y", "accel_wr_z")
+                    // Gyroscope
+                    ShimmerProtocol.CH_GYRO_X,
+                    ShimmerProtocol.CH_GYRO_Y,
+                    ShimmerProtocol.CH_GYRO_Z     -> keys += listOf("gyro_x", "gyro_y", "gyro_z")
+                    // Magnetometer
+                    ShimmerProtocol.CH_MAG_X,
+                    ShimmerProtocol.CH_MAG_Y,
+                    ShimmerProtocol.CH_MAG_Z      -> keys += listOf("mag_x", "mag_y", "mag_z")
+                    // GSR
                     ShimmerProtocol.CH_GSR         -> keys += "gsr_kohm"
-                    ShimmerProtocol.CH_EXP_A0      -> keys += "ppg_mv"
+                    // PPG (IntADC Ch13 or Ch14)
+                    ShimmerProtocol.CH_INT_ADC_CH13,
+                    ShimmerProtocol.CH_INT_ADC_CH14 -> keys += "ppg_mv"
+                    // Battery
                     ShimmerProtocol.CH_VBATT       -> keys += "batt_mv"
+                    // ExG
                     ShimmerProtocol.CH_EXG1_CH1_24,
                     ShimmerProtocol.CH_EXG1_CH1_16 -> keys += listOf("exg1_ch1", "exg1_ch2")
                     ShimmerProtocol.CH_EXG2_CH1_24,
                     ShimmerProtocol.CH_EXG2_CH1_16 -> keys += listOf("exg2_ch1", "exg2_ch2")
                 }
             }
-            AppLog.i("VM", "Supported keys from channels: $keys")
+            AppLog.i("VM", "Channels: ${channels.map { "0x%02X".format(it) }}  Keys: $keys")
             val defined = signalsForType(_activeSensorType.value).map { it.key }.toSet()
             keys.intersect(defined)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
