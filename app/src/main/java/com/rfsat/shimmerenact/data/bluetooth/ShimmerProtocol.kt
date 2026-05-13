@@ -93,6 +93,8 @@ object ShimmerProtocol {
         CH_EXG1_STATUS, CH_EXG2_STATUS             -> 1
         CH_EXG1_CH1_24, CH_EXG1_CH2_24,
         CH_EXG2_CH1_24, CH_EXG2_CH2_24             -> 3
+        // Empirically verified on SR48-5-0: 0x12=Gyro(6B), 0x1C=Mag(6B)
+        0x12, 0x1C                                  -> 6
         else                                        -> 2
     }
 
@@ -194,7 +196,9 @@ object ShimmerProtocol {
                 CH_ACCEL_LN_Y   -> result["accel_y"]   = calParams.calibrateAccel(readI16(), 1)
                 CH_ACCEL_LN_Z   -> result["accel_z"]   = calParams.calibrateAccel(readI16(), 2)
                 CH_VBATT        -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())
+                0x0A            -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())  // empirical
                 CH_GSR          -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())
+                0x05            -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())     // empirical
                 CH_EXT_ADC_CH7  -> { readU16() }
                 CH_EXT_ADC_CH6  -> { readU16() }
                 CH_EXT_ADC_CH15 -> { readU16() }
@@ -225,6 +229,18 @@ object ShimmerProtocol {
                 CH_EXG1_CH2_16  -> result["exg1_ch2"]  = readI16BE().toDouble()
                 CH_EXG2_CH1_16  -> result["exg2_ch1"]  = readI16BE().toDouble()
                 CH_EXG2_CH2_16  -> result["exg2_ch2"]  = readI16BE().toDouble()
+                // Empirically verified on SR48-5-0 firmware: 0x12=Gyro 6B, 0x1C=Mag 6B
+                0x12 -> {
+                    result["gyro_x"] = calParams.calibrateGyro(readI16BE(), 0)
+                    result["gyro_y"] = calParams.calibrateGyro(readI16BE(), 1)
+                    result["gyro_z"] = calParams.calibrateGyro(readI16BE(), 2)
+                }
+                // LSM303 sends mag in order X, Z, Y
+                0x1C -> {
+                    result["mag_x"]  = calParams.calibrateMag(readI16BE(), 0)
+                    result["mag_z"]  = calParams.calibrateMag(readI16BE(), 2)
+                    result["mag_y"]  = calParams.calibrateMag(readI16BE(), 1)
+                }
                 else -> {
                     if (!unknownLogged) {
                         AppLog.i("PKT", "Unknown ch=0x%02X w=2 offset=$offset/${raw.size}".format(ch))

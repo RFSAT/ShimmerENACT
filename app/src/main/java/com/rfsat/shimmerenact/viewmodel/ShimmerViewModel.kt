@@ -92,18 +92,21 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                     // Gyroscope
                     ShimmerProtocol.CH_GYRO_X,
                     ShimmerProtocol.CH_GYRO_Y,
-                    ShimmerProtocol.CH_GYRO_Z     -> keys += listOf("gyro_x", "gyro_y", "gyro_z")
+                    ShimmerProtocol.CH_GYRO_Z,
+                    0x12 /* empirical gyro SR48-5-0 */ -> keys += listOf("gyro_x", "gyro_y", "gyro_z")
                     // Magnetometer
                     ShimmerProtocol.CH_MAG_X,
                     ShimmerProtocol.CH_MAG_Y,
-                    ShimmerProtocol.CH_MAG_Z      -> keys += listOf("mag_x", "mag_y", "mag_z")
+                    ShimmerProtocol.CH_MAG_Z,
+                    0x1C /* empirical mag SR48-5-0 */  -> keys += listOf("mag_x", "mag_y", "mag_z")
                     // GSR
                     ShimmerProtocol.CH_GSR         -> keys += "gsr_kohm"
                     // PPG (IntADC Ch13 or Ch14)
                     ShimmerProtocol.CH_INT_ADC_CH13,
                     ShimmerProtocol.CH_INT_ADC_CH14 -> keys += "ppg_mv"
                     // Battery
-                    ShimmerProtocol.CH_VBATT       -> keys += "batt_mv"
+                    ShimmerProtocol.CH_VBATT,
+                    0x0A /* empirical batt SR48-5-0 */ -> keys += "batt_mv"
                     // ExG
                     ShimmerProtocol.CH_EXG1_CH1_24,
                     ShimmerProtocol.CH_EXG1_CH1_16 -> keys += listOf("exg1_ch1", "exg1_ch2")
