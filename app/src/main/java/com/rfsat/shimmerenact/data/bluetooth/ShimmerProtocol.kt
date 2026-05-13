@@ -236,4 +236,19 @@ object ShimmerProtocol {
         }
         return result
     }
+    // ─── Bluetooth ────────────────────────────────────────────────────────────
+    const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"
+
+    // ─── UI constants ─────────────────────────────────────────────────────────
+    const val CHART_BUFFER_SIZE = 500
+
+    // ─── ShimmerPacketParser (thin wrapper kept for API compatibility) ────────
+    object ShimmerPacketParser {
+        fun parse(
+            raw: ByteArray,
+            channels: List<Int>,
+            calParams: CalibrationParams
+        ): Map<String, Double> = parsePacket(raw, channels, calParams)
+    }
+
 }
