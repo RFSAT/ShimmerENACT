@@ -25,6 +25,7 @@ class ShimmerBluetoothManager(private val context: Context) {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
     private val _sensorBitmapFlow = MutableStateFlow(intArrayOf(0, 0, 0))
+    private val _channelListFlow   = MutableStateFlow<List<Int>>(emptyList())
     /** The 3-byte sensor bitmap received from the device (or default). */
     val sensorBitmapFlow: StateFlow<IntArray>  = _sensorBitmapFlow.asStateFlow()
     val channelListFlow:  StateFlow<List<Int>> = _channelListFlow.asStateFlow()
