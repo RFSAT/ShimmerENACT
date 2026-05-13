@@ -90,11 +90,12 @@ object ShimmerProtocol {
     // ─── Channel width in bytes ───────────────────────────────────────────────
     fun channelWidth(ch: Int): Int = when (ch) {
         CH_TIMESTAMP                                -> 3
+        // Empirical overrides for SR48-5-0 firmware — MUST come first
+        0x12                                        -> 6  // Gyro XYZ block
+        0x1C                                        -> 6  // Mag XZY block
         CH_EXG1_STATUS, CH_EXG2_STATUS             -> 1
         CH_EXG1_CH1_24, CH_EXG1_CH2_24,
         CH_EXG2_CH1_24, CH_EXG2_CH2_24             -> 3
-        // Empirically verified on SR48-5-0: 0x12=Gyro(6B), 0x1C=Mag(6B)
-        0x12, 0x1C                                  -> 6
         else                                        -> 2
     }
 
