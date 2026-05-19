@@ -10,11 +10,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
 
-    <!-- Location (required for BT scan on Android 11 and below) -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="30" />
+    <!-- Location (required for BT scan on Android 11 and below) -->\n    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />\n    <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />\n\n    <!-- Internet — required for Mapbox tile loading -->\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />
 
     <!-- Storage -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -38,6 +34,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ShimmerENACT"
         android:hardwareAccelerated="true">
+
+        <!-- Mapbox access token (set MAPBOX_ACCESS_TOKEN in local.properties or env) -->
+        <meta-data
+            android:name="com.mapbox.maps.AccessToken"
+            android:value="${MAPBOX_ACCESS_TOKEN}" />
 
         <activity
             android:name=".MainActivity"

@@ -15,12 +15,16 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.LinkedList
 
+import com.rfsat.shimmerenact.data.repository.LocationRepository
+import com.rfsat.shimmerenact.data.repository.RecordingSession
+
 class ShimmerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val context: Context = application.applicationContext
     val btManager = ShimmerBluetoothManager(context)
     val prefsRepo = PreferencesRepository(context)
     val recordingRepo = RecordingRepository(context)
+    val locationRepo = LocationRepository(context)
 
     // ─── Sensor configurations ────────────────────────────────────────────────
     private val _gsrConfig = MutableStateFlow(
@@ -141,18 +145,30 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         try {
-            // Always reset recording state on startup — if the app crashed mid-recording,
-            // this prevents a corrupted state from crashing every subsequent launch.
             recordingRepo.resetRecordingState()
             _recordingState.value = RecordingState()
 
             observeConnectionState()
             observeSamples()
             observeErrors()
+            observeLocation()
             loadPrefs()
             loadSessions()
         } catch (e: Exception) {
             AppLog.e("VM", "Init error: ${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    private fun observeLocation() {
+        viewModelScope.launch {
+            locationRepo.currentLocation.collect { loc ->
+                _uiState.update { it.copy(currentLocation = loc) }
+            }
+        }
+        viewModelScope.launch {
+            locationRepo.locationTrace.collect { trace ->
+                _uiState.update { it.copy(locationTrace = trace) }
+            }
         }
     }
 
@@ -191,7 +207,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
                 // Write to per-signal CSV files if recording
                 if (recordingRepo.isRecording) {
-                    recordingRepo.writeSampleSync(sample)
+                    recordingRepo.writeSampleSync(sample, locationRepo.latestPoint())
                     _recordingState.update { rs ->
                         rs.copy(
                             sampleCount = rs.sampleCount + 1,
@@ -291,29 +307,36 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun startLocationUpdates() = locationRepo.startUpdates()
+    fun stopLocationUpdates()  = locationRepo.stopUpdates()
+
+    // ── Continue-recording support ─────────────────────────────────────────
+    private var _pendingAppend = false
+    fun setPendingAppend(append: Boolean) { _pendingAppend = append }
+
     fun disconnect() = btManager.disconnect()
 
-    fun startRecording() {
+    fun lastSession() = recordingRepo.lastSession()
+
+    fun startRecording(append: Boolean = _pendingAppend) {
+        _pendingAppend = false   // consume once
         viewModelScope.launch {
             val config = activeConfig.value
             val allSignals = signalsForType(config.sensorType)
             val recKeys = config.resolvedRecordingSignals(allSignals)
             val recSignals = allSignals.filter { it.key in recKeys }
 
-            AppLog.i("REC", "Starting — ${recSignals.size} signals at hw=${config.hardwareRateHz}Hz")
-            recSignals.forEach { sig ->
-                val rate = config.effectiveRateHz(sig.key, sig.rateConstraints)
-                AppLog.d("REC", "  ${sig.key}: $rate Hz")
-            }
+            AppLog.i("REC", "${if (append) "Continuing" else "Starting"} — ${recSignals.size} signals at hw=${config.hardwareRateHz}Hz")
 
             val result = recordingRepo.startRecording(
                 deviceName = config.displayName,
                 signals = recSignals,
                 signalRatesHz = config.signalRatesHz,
-                hardwareHz = config.hardwareRateHz
+                hardwareHz = config.hardwareRateHz,
+                append = append
             )
             result.onSuccess { paths ->
-                AppLog.ok("REC", "Recording started — ${paths.size} files")
+                AppLog.ok("REC", "Recording ${if (append) "continued" else "started"} — ${paths.size} files")
                 _recordingState.value = RecordingState(
                     isRecording = true,
                     startTimeMs = System.currentTimeMillis(),

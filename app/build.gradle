@@ -12,8 +12,8 @@ android {
         applicationId "com.rfsat.shimmerenact"
         minSdk 26
         targetSdk 34
-        versionCode 43
-        versionName "1.5.1"
+        versionCode 44
+        versionName "1.6.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -49,6 +49,14 @@ android {
             }
         }
     }
+
+    // Mapbox access token — read from local.properties (not committed) or CI env var
+    def mapboxToken = project.findProperty('MAPBOX_ACCESS_TOKEN') ?:
+                      System.getenv('MAPBOX_ACCESS_TOKEN') ?: 'YOUR_MAPBOX_TOKEN_HERE'
+    def mapboxDownloadsToken = project.findProperty('MAPBOX_DOWNLOADS_TOKEN') ?:
+                               System.getenv('MAPBOX_DOWNLOADS_TOKEN') ?: ''
+
+    manifestPlaceholders = [MAPBOX_ACCESS_TOKEN: mapboxToken]
 
     buildTypes {
         debug {
@@ -129,6 +137,13 @@ dependencies {
     implementation 'com.opencsv:opencsv:5.8'
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
     implementation 'com.google.accompanist:accompanist-permissions:0.33.2-alpha'
+
+    // Location services
+    implementation 'com.google.android.gms:play-services-location:21.2.0'
+
+    // Mapbox Maps SDK for Android (Compose)
+    implementation 'com.mapbox.maps:android:11.4.0'
+    implementation 'com.mapbox.extension:maps-compose:11.4.0'
     implementation 'androidx.core:core-splashscreen:1.0.1'
 
     testImplementation 'junit:junit:4.13.2'

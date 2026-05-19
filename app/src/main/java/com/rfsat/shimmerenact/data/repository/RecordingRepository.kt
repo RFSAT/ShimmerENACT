@@ -2,6 +2,7 @@ package com.rfsat.shimmerenact.data.repository
 
 import android.content.Context
 import android.os.Environment
+import com.rfsat.shimmerenact.data.models.LocationPoint
 import com.rfsat.shimmerenact.data.models.RateConstraints
 import com.rfsat.shimmerenact.data.models.ShimmerSample
 import com.rfsat.shimmerenact.data.models.ShimmerSignal
@@ -13,16 +14,21 @@ import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.*
 
+// ─── GPS-tagged sample —————————————————————————————————————————————————————────
+// We fuse each ShimmerSample with the most recent GPS fix before writing.
+// GPS location is written as extra columns in every signal CSV so that data
+// can be geo-referenced without a separate join step.
+
 // ─── Per-signal recording channel ─────────────────────────────────────────────
 
 private data class SignalChannel(
     val signal: ShimmerSignal,
-    val targetHz: Int,         // desired output rate
-    val hardwareHz: Int,       // hardware stream rate
+    val targetHz: Int,
+    val hardwareHz: Int,
     val writer: BufferedWriter,
-    val file: File
+    val file: File,
+    val appendMode: Boolean = false
 ) {
-    // Emit every Nth hardware sample to achieve targetHz
     val decimationStep: Int = (hardwareHz.toDouble() / targetHz.coerceAtLeast(1))
         .coerceAtLeast(1.0).toInt()
     var counter: Int = 0
@@ -32,10 +38,10 @@ private data class SignalChannel(
 // ─── Session metadata ─────────────────────────────────────────────────────────
 
 data class RecordingSession(
-    val sessionId: String,          // timestamp-based, same for all files in the session
+    val sessionId: String,
     val deviceName: String,
     val startTimeMs: Long,
-    val files: List<RecordingFile>  // one per signal
+    val files: List<RecordingFile>
 )
 
 // ─── Repository ───────────────────────────────────────────────────────────────
@@ -58,24 +64,75 @@ class RecordingRepository(private val context: Context) {
     val currentSessionId: String get() = sessionId
     val currentSessionDir: String get() = sessionDir?.absolutePath ?: ""
 
-    // ─── Start recording — one file per selected signal ───────────────────────
+    // ─── Last session — for "continue" feature ────────────────────────────────
+    fun lastSession(): RecordingSession? {
+        val root = runCatching { getRootDir() }.getOrNull() ?: return null
+        val dir = root.listFiles { f -> f.isDirectory }
+            ?.maxByOrNull { it.lastModified() } ?: return null
+        val csvFiles = dir.listFiles { f -> f.extension == "csv" }
+            ?.mapNotNull { f ->
+                runCatching {
+                    RecordingFile(
+                        name = f.nameWithoutExtension,
+                        path = f.absolutePath,
+                        sizeBytes = f.length(),
+                        lastModified = f.lastModified(),
+                        sessionId = dir.name,
+                        rowCount = 0L
+                    )
+                }.getOrNull()
+            } ?: emptyList()
+        return RecordingSession(
+            sessionId = dir.name,
+            deviceName = dir.name.substringBeforeLast("_"),
+            startTimeMs = dir.lastModified(),
+            files = csvFiles
+        )
+    }
+
+    // ─── Start recording ──────────────────────────────────────────────────────
+    // append=true → reopen the most recent session directory in append mode.
     suspend fun startRecording(
         deviceName: String,
-        signals: List<ShimmerSignal>,       // signals to record (already filtered to selection)
-        signalRatesHz: Map<String, Int>,    // key → target Hz; missing = hardwareHz
-        hardwareHz: Int
+        signals: List<ShimmerSignal>,
+        signalRatesHz: Map<String, Int>,
+        hardwareHz: Int,
+        append: Boolean = false
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         if (_isRecording) stopRecording()
         try {
-            sessionId = sessionDateFmt.format(Date())
-            val safeName = deviceName.replace(Regex("[^A-Za-z0-9_-]"), "_")
-
-            // Create a session sub-directory so all files from one recording session
-            // are grouped together:  ShimmerENACT / session_YYYY-MM-DD_HH-mm-ss /
             val rootDir = getRootDir()
-            val dir = File(rootDir, "${safeName}_$sessionId").also { it.mkdirs() }
-            sessionDir = dir
+            val dir: File
+            val isAppend: Boolean
 
+            if (append) {
+                val existing = rootDir.listFiles { f -> f.isDirectory }
+                    ?.maxByOrNull { it.lastModified() }
+                if (existing != null) {
+                    dir = existing
+                    sessionId = dir.name.substringAfterLast("_").let {
+                        // Reconstruct session id from dir name
+                        dir.name.removePrefix(
+                            "${deviceName.replace(Regex("[^A-Za-z0-9_-]"), "_")}_"
+                        )
+                    }
+                    isAppend = true
+                    AppLog.i("REC", "Continuing session: ${dir.name}")
+                } else {
+                    // No prior session — fall through to new session
+                    sessionId = sessionDateFmt.format(Date())
+                    val safeName = deviceName.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                    dir = File(rootDir, "${safeName}_$sessionId").also { it.mkdirs() }
+                    isAppend = false
+                }
+            } else {
+                sessionId = sessionDateFmt.format(Date())
+                val safeName = deviceName.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                dir = File(rootDir, "${safeName}_$sessionId").also { it.mkdirs() }
+                isAppend = false
+            }
+
+            sessionDir = dir
             val startTs = isoFmt.format(Date())
             val paths = mutableListOf<String>()
 
@@ -83,24 +140,36 @@ class RecordingRepository(private val context: Context) {
                 val targetHz = (signalRatesHz[sig.key] ?: hardwareHz).coerceIn(1, hardwareHz)
                 val safeKey = sig.key.replace(Regex("[^A-Za-z0-9_]"), "_")
                 val file = File(dir, "${safeKey}.csv")
-                val bw = BufferedWriter(FileWriter(file))
 
-                // Header block
-                bw.write("# RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)\n")
-                bw.write("# Device: $deviceName\n")
-                bw.write("# Signal: ${sig.displayName}  [${sig.unit}]\n")
-                bw.write("# Hardware rate: $hardwareHz Hz  |  Output rate: $targetHz Hz\n")
-                bw.write("# Session start: $startTs\n")
-                bw.write("# Generated by ShimmerENACT v1.0\n")
-                bw.write("timestamp_iso,timestamp_ms,${sig.key}_${sig.unit.replace("/", "per")}\n")
+                // GPS signals get special handling — they are written to ALL files as
+                // extra columns, not as standalone files. Skip creating separate files.
+                if (sig.key.startsWith("gps_")) continue
 
-                channels.add(SignalChannel(sig, targetHz, hardwareHz, bw, file))
+                val needsHeader = !file.exists() || !isAppend
+                val bw = BufferedWriter(FileWriter(file, isAppend))
+
+                if (needsHeader) {
+                    bw.write("# RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)\n")
+                    bw.write("# Device: $deviceName\n")
+                    bw.write("# Signal: ${sig.displayName}  [${sig.unit}]\n")
+                    bw.write("# Hardware rate: $hardwareHz Hz  |  Output rate: $targetHz Hz\n")
+                    bw.write("# Session start: $startTs\n")
+                    bw.write("# Generated by ShimmerENACT v1.5\n")
+                    bw.write("timestamp_iso,timestamp_ms,${sig.key}_${sig.unit.replace("/","per")}")
+                    bw.write(",gps_lat_deg,gps_lon_deg,gps_alt_m,gps_acc_m\n")
+                } else {
+                    // Append mode — write a continuation marker
+                    bw.write("# --- Session continued: $startTs ---\n")
+                }
+
+                channels.add(SignalChannel(sig, targetHz, hardwareHz, bw, file, isAppend))
                 paths.add(file.absolutePath)
             }
 
             _isRecording = true
             _totalSamplesWritten = 0L
-            AppLog.ok("REC", "Session started — ${signals.size} files in ${dir.name}")
+            val mode = if (isAppend) "appended" else "started"
+            AppLog.ok("REC", "Session $mode — ${signals.size} files in ${dir.name}")
             Result.success(paths)
         } catch (e: Exception) {
             AppLog.e("REC", "startRecording failed: ${e.message}")
@@ -110,10 +179,17 @@ class RecordingRepository(private val context: Context) {
         }
     }
 
-    // ─── Write a hardware sample — applies per-channel decimation ─────────────
-    fun writeSampleSync(sample: ShimmerSample) {
+    // ─── Write a hardware sample — with GPS columns ───────────────────────────
+    fun writeSampleSync(sample: ShimmerSample, location: LocationPoint?) {
         if (!_isRecording || channels.isEmpty()) return
         val isoTs = isoFmt.format(Date(sample.timestampMs))
+        val gpsStr = if (location != null) {
+            ",%.8f,%.8f,%.2f,%.1f".format(
+                location.lat, location.lon, location.altM, location.accuracyM
+            )
+        } else {
+            ",,,"
+        }
         var wrote = false
         for (ch in channels) {
             val v = sample.values[ch.signal.key] ?: continue
@@ -121,12 +197,10 @@ class RecordingRepository(private val context: Context) {
             if (ch.counter >= ch.decimationStep) {
                 ch.counter = 0
                 try {
-                    ch.writer.write("$isoTs,${sample.timestampMs},${"%.6f".format(v)}\n")
+                    ch.writer.write("$isoTs,${sample.timestampMs},${"%.6f".format(v)}$gpsStr\n")
                     ch.rowsWritten++
                     wrote = true
-                } catch (_: Exception) {
-                    // Writer closed mid-flight (stop race) — ignore silently
-                }
+                } catch (_: Exception) {}
             }
         }
         if (wrote) {
@@ -137,7 +211,9 @@ class RecordingRepository(private val context: Context) {
         }
     }
 
-    /** Emergency reset — call if the app detects recording stuck in bad state. */
+    // Overload for backward compatibility (no GPS)
+    fun writeSampleSync(sample: ShimmerSample) = writeSampleSync(sample, null)
+
     fun resetRecordingState() {
         channels.forEach { runCatching { it.writer.close() } }
         channels.clear()
@@ -148,11 +224,11 @@ class RecordingRepository(private val context: Context) {
 
     // ─── Stop recording ───────────────────────────────────────────────────────
     suspend fun stopRecording(): Result<RecordingSession> = withContext(Dispatchers.IO) {
-        _isRecording = false  // Stop writes immediately, even if rest fails
+        _isRecording = false
         return@withContext try {
             val endTs = isoFmt.format(Date())
             val files = mutableListOf<RecordingFile>()
-            val channelsCopy = channels.toList()  // snapshot before clear
+            val channelsCopy = channels.toList()
             channels.clear()
 
             for (ch in channelsCopy) {
@@ -236,19 +312,15 @@ class RecordingRepository(private val context: Context) {
             } ?: emptyList()
     }
 
-    // ─── Delete session directory ─────────────────────────────────────────────
     suspend fun deleteSession(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         getRootDir().listFiles { f -> f.isDirectory && f.name.contains(sessionId) }
             ?.firstOrNull()?.deleteRecursively() ?: false
     }
 
-    // ─── Delete single file ───────────────────────────────────────────────────
     suspend fun deleteFile(path: String): Boolean = withContext(Dispatchers.IO) {
         File(path).delete()
     }
 
-    // ─── Storage location ──────────────────────────────────────────────────────
-    // Downloads/ShimmerENACT — accessible in any file manager.
     private fun getRootDir(): File {
         val downloads = Environment.getExternalStoragePublicDirectory(
             Environment.DIRECTORY_DOWNLOADS)

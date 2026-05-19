@@ -60,6 +60,8 @@ data class ShimmerSignal(
     val rateConstraints: RateConstraints = RATE_GENERIC
 )
 
+val RATE_GPS      = RateConstraints(1, 5)   // GPS update rate cap
+
 val GSR_SIGNALS = listOf(
     ShimmerSignal("gsr_kohm",  "GSR",         "kΩ",   0xFF43AF81, 0.0, 2000.0,     RATE_GSR_PPG),
     ShimmerSignal("ppg_mv",    "PPG",         "mV",   0xFF86BA39, -1000.0, 1000.0,  RATE_GSR_PPG),
@@ -72,7 +74,11 @@ val GSR_SIGNALS = listOf(
     ShimmerSignal("mag_x",     "Mag X",       "µT",   0xFFE04040, -1000.0, 1000.0, RATE_MAG),
     ShimmerSignal("mag_y",     "Mag Y",       "µT",   0xFF40E040, -1000.0, 1000.0, RATE_MAG),
     ShimmerSignal("mag_z",     "Mag Z",       "µT",   0xFF4040E0, -1000.0, 1000.0, RATE_MAG),
-    ShimmerSignal("batt_mv",   "Battery",     "mV",   0xFF888888, 0.0, 4500.0,     RATE_SLOW)
+    ShimmerSignal("batt_mv",   "Battery",     "mV",   0xFF888888, 0.0, 4500.0,     RATE_SLOW),
+    ShimmerSignal("gps_lat",   "Latitude",    "°",    0xFF2196F3, -90.0, 90.0,     RATE_GPS),
+    ShimmerSignal("gps_lon",   "Longitude",   "°",    0xFF03A9F4, -180.0, 180.0,   RATE_GPS),
+    ShimmerSignal("gps_alt",   "Altitude",    "m",    0xFF00BCD4, -500.0, 9000.0,  RATE_GPS),
+    ShimmerSignal("gps_acc",   "GPS Accuracy","m",    0xFF009688, 0.0, 200.0,      RATE_GPS)
 )
 
 val EXG_SIGNALS = listOf(
@@ -191,6 +197,16 @@ data class BtDeviceInfo(
     val rssi: Int = 0
 )
 
+// ─── GPS location point ───────────────────────────────────────────────────────
+
+data class LocationPoint(
+    val lat: Double,
+    val lon: Double,
+    val altM: Double,
+    val accuracyM: Float,
+    val timestampMs: Long
+)
+
 // ─── App-level UI state assembled by ViewModel ───────────────────────────────
 
 data class SensorUiState(
@@ -200,5 +216,7 @@ data class SensorUiState(
     val recentSamples: List<ShimmerSample> = emptyList(),
     val recordingState: RecordingState = RecordingState(),
     val errorMessage: String? = null,
-    val samplesPerSecond: Double = 0.0
+    val samplesPerSecond: Double = 0.0,
+    val currentLocation: LocationPoint? = null,
+    val locationTrace: List<LocationPoint> = emptyList()       // since app start
 )
