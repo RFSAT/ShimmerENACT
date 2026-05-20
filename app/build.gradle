@@ -16,8 +16,8 @@ android {
         applicationId "com.rfsat.shimmerenact"
         minSdk 26
         targetSdk 34
-        versionCode 70
-        versionName "1.8.8"
+        versionCode 71
+        versionName "1.8.9"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary true }
