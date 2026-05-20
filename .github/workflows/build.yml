@@ -33,13 +33,26 @@ jobs:
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
           fi
 
-      # Write Mapbox tokens into gradle.properties so settings.gradle can read them
-      # via providers.gradleProperty() during dependency resolution.
       - name: Write Mapbox tokens to gradle.properties
         run: |
           mkdir -p ~/.gradle
           echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
-          echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"     >> ~/.gradle/gradle.properties
+          echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"       >> ~/.gradle/gradle.properties
+
+      # gradle-wrapper.jar is not committed to the repo.
+      # Install Gradle directly and use it to generate a legitimate wrapper jar.
+      - name: Generate gradle-wrapper.jar
+        run: |
+          GRADLE_VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
+            | grep -oP '(?<=gradle-)[0-9.]+(?=-)')
+          echo "Gradle version: $GRADLE_VERSION"
+          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
+            -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp/gradle-install
+          chmod +x "/tmp/gradle-install/gradle-${GRADLE_VERSION}/bin/gradle"
+          "/tmp/gradle-install/gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
+            --gradle-version "$GRADLE_VERSION" --distribution-type bin
+          echo "gradle-wrapper.jar: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
 
       - name: Extract version name
         id: version
@@ -66,7 +79,6 @@ jobs:
           retention-days: 30
 
       - name: Build release APK and AAB
-        if: github.ref_type == 'tag'
         run: ./gradlew assembleRelease bundleRelease --stacktrace
         env:
           MAPBOX_ACCESS_TOKEN:    ${{ secrets.MAPBOX_ACCESS_TOKEN }}
@@ -77,7 +89,6 @@ jobs:
           STORE_PASSWORD:         ${{ secrets.STORE_PASSWORD }}
 
       - name: Upload release APK
-        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: ShimmerENACT-${{ steps.version.outputs.name }}-release
@@ -85,7 +96,6 @@ jobs:
           retention-days: 90
 
       - name: Upload AAB
-        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: ShimmerENACT-${{ steps.version.outputs.name }}-bundle
