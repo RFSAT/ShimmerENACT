@@ -39,39 +39,23 @@ jobs:
           echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
           echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"       >> ~/.gradle/gradle.properties
 
-      # The bootstrap jar lives at gradle-X.Y/lib/gradle-wrapper.jar inside the
-      # distribution zip. The versioned jars under lib/plugins/ are different
-      # artifacts — using them causes "NoClassDefFoundError: IDownload".
-      - name: Download gradle-wrapper.jar
+      # Install the exact Gradle version declared in gradle-wrapper.properties,
+      # then use it to regenerate gradle-wrapper.jar via 'gradle wrapper'.
+      # This is more reliable than extracting the jar from the distribution zip.
+      - name: Generate gradle-wrapper.jar
         run: |
-          VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
+          GRADLE_VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
             | grep -oP '(?<=gradle-)[0-9.]+(?=-)')
-          echo "Gradle version: $VERSION"
-          curl -fsSL \
-            "https://services.gradle.org/distributions/gradle-${VERSION}-bin.zip" \
+          echo "Installing Gradle $GRADLE_VERSION"
+          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
             -o /tmp/gradle.zip
-          python3 - << PYEOF
-          import zipfile, sys, os
-          with zipfile.ZipFile('/tmp/gradle.zip') as z:
-              # The correct bootstrap launcher is at lib/gradle-wrapper.jar
-              # (no version suffix, not in plugins/ subdirectory)
-              target = next(
-                  (n for n in z.namelist()
-                   if n.endswith('/lib/gradle-wrapper.jar')),
-                  None
-              )
-              if target is None:
-                  print('ERROR: gradle-wrapper.jar not found in distribution', file=sys.stderr)
-                  sys.exit(1)
-              print(f'Extracting: {target}', file=sys.stderr)
-              os.makedirs('gradle/wrapper', exist_ok=True)
-              with z.open(target) as src, open('gradle/wrapper/gradle-wrapper.jar', 'wb') as dst:
-                  dst.write(src.read())
-              size = os.path.getsize('gradle/wrapper/gradle-wrapper.jar')
-              print(f'Size: {size} bytes', file=sys.stderr)
-              sys.exit(0 if size > 50000 else 1)
-          PYEOF
-          echo "gradle-wrapper.jar ready: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
+          unzip -q /tmp/gradle.zip -d /tmp/gradle-install
+          GRADLE_BIN="/tmp/gradle-install/gradle-${GRADLE_VERSION}/bin/gradle"
+          chmod +x "$GRADLE_BIN"
+          echo "Running: gradle wrapper --gradle-version $GRADLE_VERSION"
+          "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" \
+            --distribution-type bin
+          echo "gradle-wrapper.jar: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
 
       - name: Extract version name
         id: version
