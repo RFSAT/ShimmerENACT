@@ -37,17 +37,10 @@ fun SamplingRateScreen(
     val activeType by viewModel.activeSensorType.collectAsState()
     val config     by viewModel.activeConfig.collectAsState()
     val signals    = remember(activeType) { signalsForType(activeType) }
-    val supportedKeys by viewModel.supportedSignalKeys.collectAsState()
-    val visibleSignals by remember(signals) {
-        derivedStateOf {
-            if (supportedKeys.isEmpty()) signals
-            else signals.filter { it.key in supportedKeys }
-        }
-    }
     val focusManager = LocalFocusManager.current
 
     // Group signals by sensor subsystem for cleaner presentation
-    val groups = remember(visibleSignals) { groupSignals(visibleSignals) }
+    val groups = remember(signals) { groupSignals(signals) }
 
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -59,7 +52,7 @@ fun SamplingRateScreen(
                         Text("Sampling Rates", color = EnactOnSurface, fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold)
                         Text(config.displayName, fontSize = 11.sp,
-                            color = EnactOnSurfaceDim)
+                            color = EnactOnSurface.copy(alpha = 0.5f))
                     }
                 },
                 navigationIcon = {
@@ -107,7 +100,7 @@ fun SamplingRateScreen(
                         "Per-signal rates below perform software decimation — " +
                         "a signal set to 50 Hz on a 250 Hz stream will emit every 5th sample.",
                         fontSize = 11.sp,
-                        color = EnactOnSurfaceDim,
+                        color = EnactOnSurface.copy(alpha = 0.6f),
                         lineHeight = 15.sp
                     )
                 }
@@ -267,7 +260,7 @@ fun HardwareRateCard(
                         Text(
                             if (preset >= 1000) "${preset/1000}k" else "$preset",
                             fontSize = 11.sp,
-                            color = if (isActive) EnactGreen else EnactOnSurfaceDim
+                            color = if (isActive) EnactGreen else EnactOnSurface.copy(alpha = 0.5f)
                         )
                     }
                 }
@@ -311,7 +304,7 @@ fun SignalGroupCard(
 
             AnimatedVisibility(visible = expanded) {
                 Column {
-                    Divider(color = EnactSurfaceVar)
+                    HorizontalDivider(color = EnactSurfaceVar)
                     signals.forEach { signal ->
                         SignalRateRow(
                             signal = signal,
@@ -320,7 +313,7 @@ fun SignalGroupCard(
                             onRateChange = { hz -> onSignalRateChange(signal.key, hz) }
                         )
                         if (signal != signals.last()) {
-                            Divider(
+                            HorizontalDivider(
                                 color = EnactSurfaceVar.copy(alpha = 0.4f),
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )

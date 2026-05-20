@@ -201,7 +201,7 @@ fun SensorTypeCard(
                 )
             }
             Spacer(Modifier.height(2.dp))
-            Text(description, fontSize = 12.sp, color = EnactOnSurfaceDim)
+            Text(description, fontSize = 12.sp, color = EnactOnSurface.copy(alpha = 0.55f))
         }
         if (isSelected) {
             Icon(Icons.Default.CheckCircle, contentDescription = "Selected",

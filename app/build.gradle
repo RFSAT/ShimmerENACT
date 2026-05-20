@@ -3,79 +3,32 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-// Mapbox tokens — read from local.properties or CI environment variables
-def mapboxToken = project.findProperty('MAPBOX_ACCESS_TOKEN') ?:
-                  System.getenv('MAPBOX_ACCESS_TOKEN') ?: 'YOUR_MAPBOX_TOKEN_HERE'
-
 android {
     namespace 'com.rfsat.shimmerenact'
     compileSdk 34
-    buildToolsVersion "34.0.0"
 
     defaultConfig {
         applicationId "com.rfsat.shimmerenact"
         minSdk 26
         targetSdk 34
-        versionCode 51
-        versionName "1.6.7"
+        versionCode 1
+        versionName "1.0.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary true
         }
-
-        // Inject Mapbox public token into AndroidManifest.xml placeholder
-        manifestPlaceholders = [MAPBOX_ACCESS_TOKEN: mapboxToken]
-    }
-
-    // ── Signing ───────────────────────────────────────────────────────────────
-    //
-    // For local development the debug keystore is used automatically.
-    // For release (CI or local):
-    //   Set these environment variables or gradle.properties entries:
-    //     KEYSTORE_PATH   – absolute path to the .jks keystore file
-    //     KEY_ALIAS       – alias of the key inside the keystore
-    //     KEY_PASSWORD    – key password
-    //     STORE_PASSWORD  – keystore password
-    //
-    // In GitHub Actions these are injected via repository secrets and the
-    // workflow writes the base64-decoded keystore to a temp path.
-
-    signingConfigs {
-        release {
-            def ksPath     = System.getenv("KEYSTORE_PATH")  ?: project.findProperty("KEYSTORE_PATH")  ?: ""
-            def ksAlias    = System.getenv("KEY_ALIAS")       ?: project.findProperty("KEY_ALIAS")       ?: ""
-            def ksKeyPass  = System.getenv("KEY_PASSWORD")    ?: project.findProperty("KEY_PASSWORD")    ?: ""
-            def ksStorePass= System.getenv("STORE_PASSWORD")  ?: project.findProperty("STORE_PASSWORD")  ?: ""
-
-            if (ksPath) {
-                storeFile     file(ksPath)
-                keyAlias      = ksAlias
-                keyPassword   = ksKeyPass
-                storePassword = ksStorePass
-            }
-        }
     }
 
     buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
+        }
         debug {
-            // Keep .debug suffix so debug and release can coexist on the same device
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
-            // Debug uses the automatic debug keystore — no config needed
-        }
-
-        release {
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-
-            // Use production signing config if keystore is available;
-            // fall back to debug signing so the build doesn't fail locally
-            // without credentials (APK will work on the device but not
-            // for Play Store upload).
-            def hasKeystore = System.getenv("KEYSTORE_PATH") || project.findProperty("KEYSTORE_PATH")
-            signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
         }
     }
 
@@ -86,11 +39,6 @@ android {
 
     kotlinOptions {
         jvmTarget = '1.8'
-        freeCompilerArgs += [
-            '-opt-in=androidx.compose.material3.ExperimentalMaterial3Api',
-            '-opt-in=com.google.accompanist.permissions.ExperimentalPermissionsApi',
-            '-opt-in=androidx.compose.foundation.ExperimentalFoundationApi'
-        ]
     }
 
     buildFeatures {
@@ -101,12 +49,6 @@ android {
         kotlinCompilerExtensionVersion '1.5.4'
     }
 
-    // Required for Play Store AAB — ensures deterministic builds
-    dependenciesInfo {
-        includeInApk false
-        includeInBundle false
-    }
-
     packagingOptions {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
@@ -115,12 +57,12 @@ android {
 }
 
 dependencies {
+    // Core Android
     implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
     implementation 'androidx.activity:activity-compose:1.8.2'
 
+    // Compose BOM
     implementation platform('androidx.compose:compose-bom:2023.10.01')
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
@@ -128,23 +70,32 @@ dependencies {
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.material:material-icons-extended'
 
+    // Navigation
     implementation 'androidx.navigation:navigation-compose:2.7.5'
+
+    // ViewModel
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
+
+    // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // DataStore for preferences
     implementation 'androidx.datastore:datastore-preferences:1.0.0'
+
+    // CSV export
     implementation 'com.opencsv:opencsv:5.8'
+
+    // Charts for real-time data visualization
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
+
+    // Permissions
     implementation 'com.google.accompanist:accompanist-permissions:0.33.2-alpha'
 
-    // Location services
-    implementation 'com.google.android.gms:play-services-location:21.2.0'
-
-    // Mapbox Maps SDK for Android (Compose)
-    implementation 'com.mapbox.maps:android:11.4.0'
-    implementation 'com.mapbox.extension:maps-compose:11.4.0'
+    // Splash screen
     implementation 'androidx.core:core-splashscreen:1.0.1'
 
+    // Test
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'

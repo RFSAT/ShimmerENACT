@@ -6,9 +6,6 @@ import android.location.Location
 import android.os.Looper
 import com.google.android.gms.location.*
 import com.rfsat.shimmerenact.data.models.LocationPoint
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +18,6 @@ class LocationRepository(private val context: Context) {
     private val _currentLocation = MutableStateFlow<LocationPoint?>(null)
     val currentLocation: StateFlow<LocationPoint?> = _currentLocation.asStateFlow()
 
-    // Full trace since app start (capped at 5000 points ≈ ~83 min at 1 Hz)
     private val _locationTrace = MutableStateFlow<List<LocationPoint>>(emptyList())
     val locationTrace: StateFlow<List<LocationPoint>> = _locationTrace.asStateFlow()
 
@@ -29,7 +25,7 @@ class LocationRepository(private val context: Context) {
 
     private val request = LocationRequest.Builder(
         Priority.PRIORITY_HIGH_ACCURACY,
-        1_000L          // 1-second interval
+        1_000L
     ).apply {
         setMinUpdateIntervalMillis(500L)
         setMinUpdateDistanceMeters(0f)
@@ -67,10 +63,10 @@ class LocationRepository(private val context: Context) {
     fun latestPoint(): LocationPoint? = _currentLocation.value
 
     private fun Location.toLocationPoint() = LocationPoint(
-        lat        = latitude,
-        lon        = longitude,
-        altM       = altitude,
-        accuracyM  = accuracy,
+        lat         = latitude,
+        lon         = longitude,
+        altM        = altitude,
+        accuracyM   = accuracy,
         timestampMs = System.currentTimeMillis()
     )
 }

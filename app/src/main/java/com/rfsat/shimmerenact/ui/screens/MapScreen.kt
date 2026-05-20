@@ -1,5 +1,6 @@
 package com.rfsat.shimmerenact.ui.screens
 
+import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,7 +31,6 @@ import com.mapbox.maps.extension.style.sources.addSource
 import com.mapbox.maps.extension.style.sources.generated.GeoJsonSource
 import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.extension.style.sources.getSourceAs
-import com.mapbox.maps.plugin.animation.camera
 import com.rfsat.shimmerenact.data.models.LocationPoint
 import com.rfsat.shimmerenact.ui.theme.*
 import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
@@ -43,16 +44,30 @@ private const val LAYER_DOT    = "enact-dot-layer"
 
 @Composable
 fun MapScreen(viewModel: ShimmerViewModel) {
-    val uiState      by viewModel.uiState.collectAsState()
-    val currentLoc    = uiState.currentLocation
-    val trace         = uiState.locationTrace
-    val sessions     by viewModel.sessions.collectAsState()
+    val context      = LocalContext.current
+    val uiState     by viewModel.uiState.collectAsState()
+    val currentLoc   = uiState.currentLocation
+    val trace        = uiState.locationTrace
+    val sessions    by viewModel.sessions.collectAsState()
 
     // Parse GPS columns from the most recent recording session CSV
     val prevTrace = remember(sessions) {
         sessions.firstOrNull()?.files?.firstOrNull()?.path
             ?.let { loadGpsFromCsv(it) } ?: emptyList()
     }
+
+    // Read Mapbox token from manifest meta-data at runtime to avoid crash
+    // if token placeholder was never replaced.
+    val mapboxToken = remember {
+        try {
+            val ai = context.packageManager.getApplicationInfo(
+                context.packageName, PackageManager.GET_META_DATA
+            )
+            ai.metaData?.getString("com.mapbox.maps.AccessToken") ?: ""
+        } catch (_: Exception) { "" }
+    }
+
+    val tokenValid = mapboxToken.startsWith("pk.")
 
     var mapView    by remember { mutableStateOf<MapView?>(null) }
     var followMode by remember { mutableStateOf(true) }
@@ -61,32 +76,25 @@ fun MapScreen(viewModel: ShimmerViewModel) {
     LaunchedEffect(trace, prevTrace, currentLoc) {
         val mv = mapView ?: return@LaunchedEffect
         mv.mapboxMap.getStyle { style ->
-            // Live trace
             style.getSourceAs<GeoJsonSource>(SOURCE_TRACE)?.featureCollection(
-                FeatureCollection.fromFeatures(listOf(
-                    Feature.fromGeometry(
-                        LineString.fromLngLats(trace.map { Point.fromLngLat(it.lon, it.lat) })
-                    )
-                ))
+                FeatureCollection.fromFeatures(listOf(Feature.fromGeometry(
+                    LineString.fromLngLats(trace.map { Point.fromLngLat(it.lon, it.lat) })
+                )))
             )
-            // Previous session trace
             style.getSourceAs<GeoJsonSource>(SOURCE_PREV)?.featureCollection(
-                FeatureCollection.fromFeatures(listOf(
-                    Feature.fromGeometry(
-                        LineString.fromLngLats(prevTrace.map { Point.fromLngLat(it.lon, it.lat) })
-                    )
-                ))
+                FeatureCollection.fromFeatures(listOf(Feature.fromGeometry(
+                    LineString.fromLngLats(prevTrace.map { Point.fromLngLat(it.lon, it.lat) })
+                )))
             )
-            // Current position dot
-            val dotFeatures = if (currentLoc != null) listOf(
-                Feature.fromGeometry(Point.fromLngLat(currentLoc.lon, currentLoc.lat))
-            ) else emptyList()
+            val dotFeatures = currentLoc?.let {
+                listOf(Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)))
+            } ?: emptyList()
             style.getSourceAs<GeoJsonSource>(SOURCE_DOT)
                 ?.featureCollection(FeatureCollection.fromFeatures(dotFeatures))
         }
     }
 
-    // Follow current position when follow mode is on
+    // Camera follow
     LaunchedEffect(currentLoc, followMode) {
         if (!followMode || currentLoc == null) return@LaunchedEffect
         mapView?.mapboxMap?.setCamera(
@@ -99,9 +107,40 @@ fun MapScreen(viewModel: ShimmerViewModel) {
 
     Box(Modifier.fillMaxSize()) {
 
-        // ── Mapbox map ────────────────────────────────────────────────────────
+        if (!tokenValid) {
+            // Show a clear message when token is missing — avoids crash
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(EnactDark),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Icon(Icons.Default.Map, null,
+                        tint = EnactGreen, modifier = Modifier.size(48.dp))
+                    Text("Mapbox Token Required",
+                        color = EnactOnSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Run extract_mapbox_token.py with sensor_placement.html to configure the map, then rebuild the app.",
+                        color = EnactOnSurface.copy(alpha = 0.7f),
+                        fontSize = 13.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            return
+        }
+
+        // ── Mapbox map ─────────────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
+                // Set the token programmatically before MapView init to avoid crash
+                // when the manifest placeholder was not substituted at build time.
+                MapboxOptions.accessToken = mapboxToken
                 MapView(ctx).also { mv ->
                     mapView = mv
                     mv.mapboxMap.loadStyle(Style.MAPBOX_STREETS) { style ->
@@ -125,7 +164,7 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                             lineCap(LineCap.ROUND)
                             lineJoin(LineJoin.ROUND)
                         })
-                        // Position dot — accent green with white ring
+                        // Position dot
                         style.addLayer(circleLayer(LAYER_DOT, SOURCE_DOT) {
                             circleRadius(9.0)
                             circleColor("#86BA39")
@@ -138,11 +177,9 @@ fun MapScreen(viewModel: ShimmerViewModel) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Info overlay ──────────────────────────────────────────────────────
+        // ── Info overlay ──────────────────────────────────────────────────
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Surface(
@@ -193,21 +230,18 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendDot(EnactGreen,       "This session")
+                    LegendDot(EnactGreen,        "This session")
                     LegendDot(Color(0xFF888888), "Last recording")
                 }
             }
         }
 
-        // ── FABs ──────────────────────────────────────────────────────────────
+        // ── FABs ──────────────────────────────────────────────────────────
         Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.End
         ) {
-            // Follow toggle
             SmallFloatingActionButton(
                 onClick = { followMode = !followMode },
                 containerColor = if (followMode) EnactGreen else EnactDarkMid
@@ -218,8 +252,6 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                     tint = Color.White
                 )
             }
-
-            // Fit all points
             SmallFloatingActionButton(
                 onClick = {
                     val mv = mapView ?: return@SmallFloatingActionButton
@@ -227,14 +259,11 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                         .map { Point.fromLngLat(it.lon, it.lat) }
                     if (allPts.size < 2) return@SmallFloatingActionButton
                     followMode = false
-                    // CoordinateBounds.hull() is a Java vararg static method —
-                    // Kotlin's spread operator cannot be used on it (KT-48162).
-                    // Build the bounding box manually from min/max lat/lon instead.
                     val lats = allPts.map { it.latitude() }
                     val lons = allPts.map { it.longitude() }
                     val bounds = CoordinateBounds(
-                        Point.fromLngLat(lons.min(), lats.min()),  // SW
-                        Point.fromLngLat(lons.max(), lats.max())   // NE
+                        Point.fromLngLat(lons.min(), lats.min()),
+                        Point.fromLngLat(lons.max(), lats.max())
                     )
                     mv.mapboxMap.setCamera(
                         mv.mapboxMap.cameraForCoordinateBounds(
@@ -264,13 +293,12 @@ private fun LegendDot(color: Color, label: String) {
     }
 }
 
-/** Parse GPS columns from a CSV written by RecordingRepository. */
 private fun loadGpsFromCsv(path: String?): List<LocationPoint> {
     if (path == null) return emptyList()
     return try {
         java.io.File(path).bufferedReader().useLines { lines ->
             lines.filter { !it.startsWith("#") }
-                .drop(1)   // skip header row
+                .drop(1)
                 .mapNotNull { line ->
                     val c = line.split(",")
                     if (c.size < 7) return@mapNotNull null

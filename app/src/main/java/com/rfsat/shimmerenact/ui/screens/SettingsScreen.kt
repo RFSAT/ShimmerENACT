@@ -1,7 +1,5 @@
 package com.rfsat.shimmerenact.ui.screens
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,8 +20,7 @@ import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
 @Composable
 fun SettingsScreen(
     viewModel: ShimmerViewModel,
-    onBack: () -> Unit,
-    onSamplingRate: () -> Unit = {}
+    onBack: () -> Unit
 ) {
     val activeConfig by viewModel.activeConfig.collectAsState()
 
@@ -110,37 +107,6 @@ fun SettingsScreen(
                 )
             }
 
-            // Sampling rate card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onSamplingRate),
-                colors = CardDefaults.cardColors(
-                    containerColor = EnactGreen.copy(alpha = 0.08f)
-                ),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, EnactGreen.copy(alpha = 0.3f))
-            ) {
-                Row(
-                    Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Speed, null, tint = EnactGreen,
-                        modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Sampling Rates", fontWeight = FontWeight.SemiBold,
-                            color = EnactOnSurface, fontSize = 14.sp)
-                        Text(
-                            "Hardware: ${activeConfig.hardwareRateHz} Hz  •  Per-signal decimation",
-                            fontSize = 12.sp, color = EnactOnSurfaceDim
-                        )
-                    }
-                    Icon(Icons.Default.ChevronRight, null,
-                        tint = EnactGreen.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
-                }
-            }
-
             // Info about storage
             Card(
                 colors = CardDefaults.cardColors(containerColor = EnactSurface),
@@ -158,7 +124,7 @@ fun SettingsScreen(
                             "CSV files are saved to:\nAndroid/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/\n\n" +
                             "Access via Files app, Android/data, or share directly from the Recordings screen.",
                             fontSize = 12.sp,
-                            color = EnactOnSurfaceDim,
+                            color = EnactOnSurface.copy(alpha = 0.55f),
                             lineHeight = 17.sp
                         )
                     }

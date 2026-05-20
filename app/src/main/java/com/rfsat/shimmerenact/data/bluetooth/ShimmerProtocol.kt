@@ -1,287 +1,246 @@
 package com.rfsat.shimmerenact.data.bluetooth
 
-import com.rfsat.shimmerenact.data.repository.AppLog
+// ─── Shimmer3 BT Classic Protocol Constants ───────────────────────────────────
+//
+// Based on Shimmer3 BT firmware protocol (FW ver ≥ 0.5)
+// Reference: https://shimmersensing.com/support/shimmer-user-manual/
+//
 
 object ShimmerProtocol {
 
-    // ─── Commands ─────────────────────────────────────────────────────────────
-    const val CMD_INQUIRY: Byte             = 0x01
-    const val CMD_SET_SAMPLING_RATE: Byte   = 0x05
-    const val CMD_START_STREAMING: Byte     = 0x07
-    const val CMD_STOP_STREAMING: Byte      = 0x20
+    // Commands (host → Shimmer)
+    const val CMD_START_STREAMING: Byte       = 0x07
+    const val CMD_STOP_STREAMING: Byte        = 0x20
+    const val CMD_INQUIRY: Byte               = 0x01
+    const val CMD_GET_SAMPLING_RATE: Byte     = 0x03
+    const val CMD_SET_SAMPLING_RATE: Byte     = 0x05
+    const val CMD_GET_CONFIG_SETUP_BYTES: Byte= 0x22
+    const val CMD_SET_SENSORS: Byte           = 0x08
+    const val CMD_GET_CALIBRATION_DUMP: Byte  = 0x17
+    const val CMD_GET_FW_VERSION: Byte        = 0x2E
+    const val CMD_RESET_TO_DEFAULT: Byte      = 0x5A
 
-    // ─── Response codes ───────────────────────────────────────────────────────
-    const val ACK: Byte                     = 0xFF.toByte()
-    const val INQUIRY_RESPONSE: Byte        = 0x02
-    const val PACKET_TYPE_DATA: Byte        = 0x00
+    // Responses / ACKs (Shimmer → host)
+    const val ACK: Byte                       = 0xFF.toByte()
+    const val DATA_PACKET_START: Byte         = 0x00
 
-    // ─── Sensor bitmap bits ───────────────────────────────────────────────────
-    const val SENSOR_A_ACCEL:       Int = 0x80
-    const val SENSOR_GYRO:          Int = 0x40
-    const val SENSOR_MAG:           Int = 0x20
-    const val SENSOR_EXG1_24BIT:    Int = 0x10
-    const val SENSOR_EXG2_24BIT:    Int = 0x08
-    const val SENSOR_GSR:           Int = 0x04
-    const val SENSOR_EXP_BOARD_A7:  Int = 0x02
-    const val SENSOR_EXP_BOARD_A0:  Int = 0x01
-    const val SENSOR_b1_VBATT:      Int = 0x20
-    const val SENSOR_b1_D_ACCEL:    Int = 0x10
-    const val SENSOR_VBATT:         Int = SENSOR_b1_VBATT
-    const val SENSOR_b2_EXG1_16BIT: Int = 0x10
-    const val SENSOR_b2_EXG2_16BIT: Int = 0x08
-    const val SENSOR_EXG1_16BIT:    Int = SENSOR_b2_EXG1_16BIT
-    const val SENSOR_EXG2_16BIT:    Int = SENSOR_b2_EXG2_16BIT
+    // Packet start byte for data
+    const val PACKET_TYPE_DATA: Byte          = 0x00
 
-    // ─── Channel codes ────────────────────────────────────────────────────────
-    // Source: Official Shimmer3 protocol (matmont/shimmer3 util.py)
-    // Verified against actual device inquiry response bytes.
-    const val CH_TIMESTAMP:     Int = 0x00  // u24  3B LE
-    const val CH_ACCEL_LN_X:   Int = 0x01  // i16  2B LE  ADXL345 low-noise
-    const val CH_ACCEL_LN_Y:   Int = 0x02
-    const val CH_ACCEL_LN_Z:   Int = 0x03
-    const val CH_ACCEL_X:      Int = 0x01  // alias
-    const val CH_ACCEL_Y:      Int = 0x02
-    const val CH_ACCEL_Z:      Int = 0x03
-    const val CH_VBATT:        Int = 0x04  // u12  2B LE
-    const val CH_GSR:          Int = 0x05  // u16  2B LE
-    const val CH_EXT_ADC_CH7:  Int = 0x06  // u12  2B LE
-    const val CH_EXT_ADC_CH6:  Int = 0x07  // u12  2B LE
-    const val CH_EXT_ADC_CH15: Int = 0x08  // u12  2B LE
-    const val CH_INT_ADC_CH1:  Int = 0x09  // u12  2B LE
-    const val CH_INT_ADC_CH12: Int = 0x0A  // u12  2B LE
-    const val CH_INT_ADC_CH13: Int = 0x0B  // u12  2B LE  PPG on GSR+
-    const val CH_EXP_A0:       Int = 0x0B  // alias PPG
-    const val CH_INT_ADC_CH14: Int = 0x0C  // u12  2B LE
-    const val CH_ACCEL_WR_X:   Int = 0x0D  // i16  2B LE  LSM303 wide-range
-    const val CH_ACCEL_WR_Y:   Int = 0x0E
-    const val CH_ACCEL_WR_Z:   Int = 0x0F
-    const val CH_EXG1_STATUS:  Int = 0x10  // u8   1B
-    const val CH_EXG1_CH1_24:  Int = 0x11  // i24* 3B BE
-    const val CH_EXG1_CH2_24:  Int = 0x12  // i24* 3B BE
-    const val CH_EXG2_STATUS:  Int = 0x13  // u8   1B
-    const val CH_EXG2_CH1_24:  Int = 0x14  // i24* 3B BE
-    const val CH_EXG2_CH2_24:  Int = 0x15  // i24* 3B BE
-    const val CH_GYRO_X:       Int = 0x16  // i16* 2B BE  MPU9150
-    const val CH_GYRO_Y:       Int = 0x17
-    const val CH_GYRO_Z:       Int = 0x18
-    const val CH_MAG_X:        Int = 0x19  // i16* 2B BE  LSM303 sends X,Z,Y order
-    const val CH_MAG_Y:        Int = 0x1A
-    const val CH_MAG_Z:        Int = 0x1B
-    const val CH_ACCEL_WR2_X:  Int = 0x1C  // i16  2B LE  alt WR accel
-    const val CH_ACCEL_WR2_Y:  Int = 0x1D
-    const val CH_ACCEL_WR2_Z:  Int = 0x1E
-    const val CH_EXG1_CH1_16:  Int = 0x1F  // i16* 2B BE
-    const val CH_EXG1_CH2_16:  Int = 0x20
-    const val CH_EXG2_CH1_16:  Int = 0x21
-    const val CH_EXG2_CH2_16:  Int = 0x22
+    // Sensor bitmap bytes (3-byte sensor bitmap for Shimmer3)
+    const val SENSOR_A_ACCEL: Int             = 0x80       // byte 0
+    const val SENSOR_GYRO: Int                = 0x40
+    const val SENSOR_MAG: Int                 = 0x20
+    const val SENSOR_EXG1_24BIT: Int          = 0x10
+    const val SENSOR_EXG2_24BIT: Int          = 0x08
+    const val SENSOR_GSR: Int                 = 0x04
+    const val SENSOR_EXP_BOARD_A7: Int        = 0x02
+    const val SENSOR_EXP_BOARD_A0: Int        = 0x01
+    const val SENSOR_PPG: Int                 = SENSOR_EXP_BOARD_A0 // PPG on A0
+    const val SENSOR_STRAIN_GAUGE: Int        = 0x8000    // byte 1 bit 15
+    const val SENSOR_HR: Int                  = 0x4000    // byte 1 bit 14
+    const val SENSOR_VBATT: Int               = 0x2000    // byte 1 bit 13
+    const val SENSOR_D_ACCEL: Int             = 0x1000    // byte 1 bit 12 (LSM303)
+    const val SENSOR_EXT_A7: Int              = 0x0200    // byte 1 bit 9
+    const val SENSOR_EXT_A6: Int              = 0x0100    // byte 1 bit 8
+    const val SENSOR_EXG1_16BIT: Int          = 0x0010    // byte 2 bit 4
+    const val SENSOR_EXG2_16BIT: Int          = 0x0008    // byte 2 bit 3
 
-    // ─── Timing ───────────────────────────────────────────────────────────────
-    const val RESPONSE_TIMEOUT_MS: Long   = 3000L
-    const val CLOCK_FREQ_HZ:       Double = 32768.0
+    // Sampling rate codes (256/N)
+    val SAMPLING_RATES = mapOf(
+        1    to 0xFF00,
+        10   to 0x1980,
+        51   to 0x0500,
+        102  to 0x0280,
+        204  to 0x0140,
+        256  to 0x0100,
+        512  to 0x0080,
+        1024 to 0x0040
+    )
 
-    fun registerToHz(reg: Int): Int =
-        if (reg == 0) 0 else (CLOCK_FREQ_HZ / reg + 0.5).toInt()
+    // RFCOMM/SPP UUID for Bluetooth Serial Port Profile
+    const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"
 
-    fun buildRateCommand(hz: Int): ByteArray {
-        val reg = (CLOCK_FREQ_HZ / hz).toInt().coerceIn(1, 65535)
-        return byteArrayOf(CMD_SET_SAMPLING_RATE, (reg and 0xFF).toByte(), (reg shr 8).toByte())
-    }
+    // Packet timeouts
+    const val RESPONSE_TIMEOUT_MS = 3000L
+    const val STREAM_IDLE_TIMEOUT_MS = 5000L
 
-    // ─── Channel width in bytes ───────────────────────────────────────────────
-    fun channelWidth(ch: Int): Int = when (ch) {
-        CH_TIMESTAMP                                -> 3
-        // Empirical overrides for SR48-5-0 firmware — MUST come first
-        0x12                                        -> 6  // Gyro XYZ block
-        0x1C                                        -> 6  // Mag XZY block
-        CH_EXG1_STATUS, CH_EXG2_STATUS             -> 1
-        CH_EXG1_CH1_24, CH_EXG1_CH2_24,
-        CH_EXG2_CH1_24, CH_EXG2_CH2_24             -> 3
-        else                                        -> 2
-    }
+    // Ring buffer size for charting (number of samples kept in memory)
+    const val CHART_BUFFER_SIZE = 512
+}
 
-    // ─── Packet size from channel list ────────────────────────────────────────
-    fun packetSizeFromChannels(channels: List<Int>): Int =
-        channels.sumOf { channelWidth(it) }
+// ─── Raw packet → calibrated values ──────────────────────────────────────────
 
-    // ─── Packet size from bitmap fallback ────────────────────────────────────
-    fun packetDataSize(b0: Int, b1: Int, b2: Int): Int {
-        var size = 3
-        if (b0 and SENSOR_A_ACCEL       != 0) size += 6
-        if (b0 and SENSOR_GYRO          != 0) size += 6
-        if (b0 and SENSOR_MAG           != 0) size += 6
-        if (b0 and SENSOR_GSR           != 0) size += 2
-        if (b0 and SENSOR_EXP_BOARD_A0  != 0) size += 2
-        if (b0 and SENSOR_EXP_BOARD_A7  != 0) size += 2
-        if (b1 and SENSOR_b1_VBATT      != 0) size += 2
-        if (b1 and SENSOR_b1_D_ACCEL    != 0) size += 6
-        if (b0 and SENSOR_EXG1_24BIT    != 0) size += 7
-        if (b0 and SENSOR_EXG2_24BIT    != 0) size += 7
-        if (b2 and SENSOR_b2_EXG1_16BIT != 0) size += 5
-        if (b2 and SENSOR_b2_EXG2_16BIT != 0) size += 5
-        return size
-    }
+object ShimmerPacketParser {
 
-    // ─── Calibration parameters ───────────────────────────────────────────────
-    data class CalibrationParams(
-        val accelSens:   Double      = 83.0,
-        val accelOffset: DoubleArray = doubleArrayOf(2081.0, 2081.0, 2087.0),
-        val gyroSens:    Double      = 65.5,
-        val gyroOffset:  DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
-        val magSens:     Double      = 1100.0,
-        val magOffset:   DoubleArray = doubleArrayOf(0.0, 0.0, 0.0)
-    ) {
-        fun calibrateAccel(raw: Int, axis: Int) = (raw - accelOffset[axis]) / accelSens
-        fun calibrateGyro(raw: Int, axis: Int)  = (raw - gyroOffset[axis])  / gyroSens
-        fun calibrateMag(raw: Int, axis: Int)   = (raw - magOffset[axis])   / magSens
-        // Battery: ADC reads through a ÷2 voltage divider, 3.0V reference
-        // Vbatt (mV) = (raw / 4095) × 3000 × 2
-        fun calibrateBatt(raw: Int): Double = (raw / 4095.0) * 3000.0 * 2.0
-        fun calibrateGsr(raw: Int): Double {
-            val r = if (raw == 0) 1.0 else raw.toDouble()
-            return (1.0 / ((r / 4096.0 * 3.0) / 1000.0 + 1.0e-9)) / 1000.0
-        }
-        fun calibratePpg(raw: Int): Double = raw * (3.0 / 4095.0) * 1000.0
-    }
-
-    // ─── Packet parser ────────────────────────────────────────────────────────
-    fun parsePacket(
+    /**
+     * Parses a raw Shimmer3 data packet byte array into a map of signal keys → doubles.
+     *
+     * The byte layout depends on which sensors are enabled (sensorBitmap).
+     * Shimmer3 uses little-endian, 2-byte (or 3-byte for 24-bit ExG) signed integers.
+     *
+     * This implementation covers the sensors used by GSR+ (SR48-5-0) and EXG (SR47-6-0).
+     *
+     * @param raw        Full raw packet bytes starting after the packet-type byte
+     * @param sensorBitmap 3-byte bitmap from inquiry response
+     * @param calParams  Optional calibration parameters from device
+     * @return Map of signal key → calibrated double value
+     */
+    fun parse(
         raw: ByteArray,
-        channels: List<Int>,
-        calParams: CalibrationParams
-    ): Map<String, Double> =
-        if (channels.isNotEmpty()) parseByChannelList(raw, channels, calParams)
-        else emptyMap()
-
-    private fun parseByChannelList(
-        raw: ByteArray,
-        channels: List<Int>,
+        sensorBitmap: IntArray,          // [byte0, byte1, byte2]
         calParams: CalibrationParams
     ): Map<String, Double> {
         val result = mutableMapOf<String, Double>()
         var offset = 0
 
-        fun remaining() = raw.size - offset
+        // Shimmer3 always prepends a 3-byte timestamp (little-endian, 32768 Hz clock)
+        if (raw.size < 3) return result
+        val shimmerTs = (raw[0].toInt() and 0xFF) or
+                        ((raw[1].toInt() and 0xFF) shl 8) or
+                        ((raw[2].toInt() and 0xFF) shl 16)
+        offset = 3
 
-        // Per official shimmer.py: timestamp is ALWAYS the first 3 bytes,
-        // regardless of what appears first in the channel list.
-        // Read it now, then parse the remaining channels in order,
-        // skipping any 0x00 (CH_TIMESTAMP) entries in the list.
-        fun readU8(): Int {
-            if (remaining() < 1) { offset++; return 0 }
-            return raw[offset++].toInt() and 0xFF
+        fun readU12(): Int {
+            if (offset + 1 >= raw.size) return 0
+            val v = ((raw[offset].toInt() and 0xFF) or ((raw[offset + 1].toInt() and 0xFF) shl 8)) and 0x0FFF
+            offset += 2; return v
         }
-        fun readU16(): Int {
-            if (remaining() < 2) { offset += minOf(2, remaining()); return 0 }
-            val lo = raw[offset].toInt() and 0xFF; val hi = raw[offset + 1].toInt() and 0xFF
-            offset += 2; return lo or (hi shl 8)
+        fun readI16(): Int {
+            if (offset + 1 >= raw.size) return 0
+            val v = (raw[offset].toInt() and 0xFF) or ((raw[offset + 1].toInt() and 0xFF) shl 8)
+            offset += 2
+            return if (v >= 0x8000) v - 0x10000 else v
         }
-        fun readI16(): Int { val v = readU16(); return if (v >= 0x8000) v - 0x10000 else v }
-        fun readI16BE(): Int {
-            if (remaining() < 2) { offset += minOf(2, remaining()); return 0 }
-            val hi = raw[offset].toInt() and 0xFF; val lo = raw[offset + 1].toInt() and 0xFF
-            offset += 2; val v = (hi shl 8) or lo; return if (v >= 0x8000) v - 0x10000 else v
-        }
-        fun readU24(): Long {
-            if (remaining() < 3) { offset += minOf(3, remaining()); return 0L }
-            val b0 = raw[offset].toInt() and 0xFF; val b1 = raw[offset+1].toInt() and 0xFF
-            val b2 = raw[offset+2].toInt() and 0xFF; offset += 3
-            return (b0 or (b1 shl 8) or (b2 shl 16)).toLong()
-        }
-        fun readI24BE(): Int {
-            if (remaining() < 3) { offset += minOf(3, remaining()); return 0 }
-            val b0 = raw[offset].toInt() and 0xFF; val b1 = raw[offset+1].toInt() and 0xFF
-            val b2 = raw[offset+2].toInt() and 0xFF; offset += 3
-            val v = (b0 shl 16) or (b1 shl 8) or b2
+        fun readI24(): Int {
+            if (offset + 2 >= raw.size) return 0
+            val v = (raw[offset].toInt() and 0xFF) or
+                    ((raw[offset + 1].toInt() and 0xFF) shl 8) or
+                    ((raw[offset + 2].toInt() and 0xFF) shl 16)
+            offset += 3
             return if (v >= 0x800000) v - 0x1000000 else v
         }
-        fun readAdc12() = readU16() and 0x0FFF
 
-        // Always read timestamp first (implicit, always at bytes 0-2)
-        if (raw.size >= 3) {
-            val ts = readU24()
-            result["timestamp_ticks"] = ts.toDouble()
+        val b0 = sensorBitmap[0]; val b1 = sensorBitmap[1]; val b2 = sensorBitmap[2]
+
+        // Analog accel (ADXL345) — 12-bit, 3 channels
+        if (b0 and ShimmerProtocol.SENSOR_A_ACCEL != 0) {
+            val ax = readU12(); val ay = readU12(); val az = readU12()
+            result["accel_x"] = calParams.calibrateAccel(ax, 0)
+            result["accel_y"] = calParams.calibrateAccel(ay, 1)
+            result["accel_z"] = calParams.calibrateAccel(az, 2)
+        }
+        // Gyro (MPU9150) — 16-bit
+        if (b0 and ShimmerProtocol.SENSOR_GYRO != 0) {
+            result["gyro_x"] = calParams.calibrateGyro(readI16(), 0)
+            result["gyro_y"] = calParams.calibrateGyro(readI16(), 1)
+            result["gyro_z"] = calParams.calibrateGyro(readI16(), 2)
+        }
+        // Mag (LSM303DLHC) — 16-bit
+        if (b0 and ShimmerProtocol.SENSOR_MAG != 0) {
+            result["mag_x"] = calParams.calibrateMag(readI16(), 0)
+            result["mag_y"] = calParams.calibrateMag(readI16(), 1)
+            result["mag_z"] = calParams.calibrateMag(readI16(), 2)
+        }
+        // ExG chip 1 — 24-bit, 2 channels (status + ch1 + ch2)
+        if (b0 and ShimmerProtocol.SENSOR_EXG1_24BIT != 0) {
+            offset += 1  // status byte
+            result["exg1_ch1"] = calParams.calibrateExG(readI24())
+            result["exg1_ch2"] = calParams.calibrateExG(readI24())
+        } else if (b2 and ShimmerProtocol.SENSOR_EXG1_16BIT != 0) {
+            offset += 1
+            result["exg1_ch1"] = calParams.calibrateExG16(readI16())
+            result["exg1_ch2"] = calParams.calibrateExG16(readI16())
+        }
+        // ExG chip 2
+        if (b0 and ShimmerProtocol.SENSOR_EXG2_24BIT != 0) {
+            offset += 1
+            result["exg2_ch1"] = calParams.calibrateExG(readI24())
+            result["exg2_ch2"] = calParams.calibrateExG(readI24())
+        } else if (b2 and ShimmerProtocol.SENSOR_EXG2_16BIT != 0) {
+            offset += 1
+            result["exg2_ch1"] = calParams.calibrateExG16(readI16())
+            result["exg2_ch2"] = calParams.calibrateExG16(readI16())
+        }
+        // GSR — 16-bit ADC
+        if (b0 and ShimmerProtocol.SENSOR_GSR != 0) {
+            result["gsr_kohm"] = calParams.calibrateGsr(readI16())
+        }
+        // PPG on expansion board A0 — 12-bit
+        if (b0 and ShimmerProtocol.SENSOR_EXP_BOARD_A0 != 0) {
+            result["ppg_mv"] = calParams.calibratePpg(readU12())
+        }
+        // Battery voltage — 12-bit
+        if (b1 shr 13 and 0x01 != 0) {
+            result["batt_mv"] = (readU12() * (3000.0 / 4095.0)) * 2.0  // voltage divider
         }
 
-        var unknownLogged = false
-        for (ch in channels) {
-            if (ch == CH_TIMESTAMP) continue  // already read above
-            when (ch) {
-                // ── Empirical codes for SR48-5-0 firmware — MUST be first ──────
-                // These codes (0x12, 0x1C, 0x0A) coincide with official constants
-                // for OTHER sensors, so empirical entries must precede them to win
-                // the first-match rule of Kotlin when().
-                0x12 -> {  // Gyro XYZ block (6B BE) — verified empirically
-                    result["gyro_x"] = calParams.calibrateGyro(readI16BE(), 0)
-                    result["gyro_y"] = calParams.calibrateGyro(readI16BE(), 1)
-                    result["gyro_z"] = calParams.calibrateGyro(readI16BE(), 2)
-                }
-                0x1C -> {  // Mag XZY block (6B BE, LSM303 sends X,Z,Y order) — empirical
-                    result["mag_x"]  = calParams.calibrateMag(readI16BE(), 0)
-                    result["mag_z"]  = calParams.calibrateMag(readI16BE(), 2)
-                    result["mag_y"]  = calParams.calibrateMag(readI16BE(), 1)
-                }
-                0x0A -> result["batt_mv"]  = calParams.calibrateBatt(readAdc12())  // empirical
-                // ── Standard channel codes ────────────────────────────────────
-                CH_TIMESTAMP     -> {}  // unreachable — handled above
-                CH_ACCEL_LN_X   -> result["accel_x"]   = calParams.calibrateAccel(readI16(), 0)
-                CH_ACCEL_LN_Y   -> result["accel_y"]   = calParams.calibrateAccel(readI16(), 1)
-                CH_ACCEL_LN_Z   -> result["accel_z"]   = calParams.calibrateAccel(readI16(), 2)
-                CH_VBATT        -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())
-                CH_GSR          -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())
-                CH_EXT_ADC_CH7  -> { readU16() }
-                CH_EXT_ADC_CH6  -> { readU16() }
-                CH_EXT_ADC_CH15 -> { readU16() }
-                CH_INT_ADC_CH1  -> { readU16() }
-                CH_INT_ADC_CH12 -> { readU16() }
-                CH_INT_ADC_CH13 -> result["ppg_mv"]    = calParams.calibratePpg(readAdc12())
-                CH_INT_ADC_CH14 -> result["ppg_mv"]    = calParams.calibratePpg(readAdc12())
-                CH_ACCEL_WR_X   -> result["accel_wr_x"] = calParams.calibrateAccel(readI16(), 0)
-                CH_ACCEL_WR_Y   -> result["accel_wr_y"] = calParams.calibrateAccel(readI16(), 1)
-                CH_ACCEL_WR_Z   -> result["accel_wr_z"] = calParams.calibrateAccel(readI16(), 2)
-                CH_EXG1_STATUS  -> { readU8() }
-                CH_EXG1_CH1_24  -> result["exg1_ch1"]  = readI24BE().toDouble()
-                CH_EXG1_CH2_24  -> result["exg1_ch2"]  = readI24BE().toDouble()
-                CH_EXG2_STATUS  -> { readU8() }
-                CH_EXG2_CH1_24  -> result["exg2_ch1"]  = readI24BE().toDouble()
-                CH_EXG2_CH2_24  -> result["exg2_ch2"]  = readI24BE().toDouble()
-                CH_GYRO_X       -> result["gyro_x"]    = calParams.calibrateGyro(readI16BE(), 0)
-                CH_GYRO_Y       -> result["gyro_y"]    = calParams.calibrateGyro(readI16BE(), 1)
-                CH_GYRO_Z       -> result["gyro_z"]    = calParams.calibrateGyro(readI16BE(), 2)
-                // LSM303 sends mag in order X, Z, Y
-                CH_MAG_X        -> result["mag_x"]     = calParams.calibrateMag(readI16BE(), 0)
-                CH_MAG_Y        -> result["mag_z"]     = calParams.calibrateMag(readI16BE(), 2)
-                CH_MAG_Z        -> result["mag_y"]     = calParams.calibrateMag(readI16BE(), 1)
-                CH_ACCEL_WR2_X  -> { readI16() }
-                CH_ACCEL_WR2_Y  -> { readI16() }
-                CH_ACCEL_WR2_Z  -> { readI16() }
-                CH_EXG1_CH1_16  -> result["exg1_ch1"]  = readI16BE().toDouble()
-                CH_EXG1_CH2_16  -> result["exg1_ch2"]  = readI16BE().toDouble()
-                CH_EXG2_CH1_16  -> result["exg2_ch1"]  = readI16BE().toDouble()
-                CH_EXG2_CH2_16  -> result["exg2_ch2"]  = readI16BE().toDouble()
-                else -> {
-                    if (!unknownLogged) {
-                        AppLog.i("PKT", "Unknown ch=0x%02X w=2 offset=$offset/${raw.size}".format(ch))
-                        unknownLogged = true
-                    }
-                    offset += minOf(2, remaining())
-                }
-            }
-        }
         return result
     }
-    // ─── Bluetooth ────────────────────────────────────────────────────────────
-    const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"
+}
 
-    // ─── UI constants ─────────────────────────────────────────────────────────
-    const val CHART_BUFFER_SIZE = 500
+// ─── Calibration parameters ───────────────────────────────────────────────────
+//
+// Shimmer3 stores calibration params in on-device memory.
+// Defaults here are typical factory values; real values come from
+// CMD_GET_CALIBRATION_DUMP once connected.
 
-    // ─── ShimmerPacketParser (thin wrapper kept for API compatibility) ────────
-    object ShimmerPacketParser {
-        fun parse(
-            raw: ByteArray,
-            channels: List<Int>,
-            calParams: CalibrationParams
-        ): Map<String, Double> = parsePacket(raw, channels, calParams)
+data class CalibrationParams(
+    // Accel ADXL345 ±2g: offset (raw ADC) + sensitivity (raw ADC / g)
+    val accelOffset: DoubleArray = doubleArrayOf(2048.0, 2048.0, 2048.0),
+    val accelSens: DoubleArray   = doubleArrayOf(83.0, 83.0, 83.0),
+
+    // Gyro MPU9150: offset + sensitivity (raw ADC / °/s)
+    val gyroOffset: DoubleArray  = doubleArrayOf(0.0, 0.0, 0.0),
+    val gyroSens: DoubleArray    = doubleArrayOf(65.5, 65.5, 65.5),   // ±500 dps
+
+    // Mag sensitivity (µT per raw LSB)
+    val magSens: DoubleArray     = doubleArrayOf(0.58, 0.58, 0.58),
+
+    // ExG: Vref = 2.42V, gain = 4 → sensitivity = Vref/(gain*2^23)
+    val exgVref: Double          = 2.42,
+    val exgGain: Double          = 4.0,
+
+    // GSR: look-up factors
+    val gsrRange: Int            = 0,     // 0=10kΩ–56kΩ, 1=56kΩ–220kΩ ...
+
+    // PPG: mV per ADC count on 3V rail, 12-bit ADC
+    val ppgScale: Double         = 3000.0 / 4095.0
+) {
+    fun calibrateAccel(raw: Int, axis: Int): Double =
+        (raw - accelOffset[axis]) / accelSens[axis] * 9.81   // → m/s²
+
+    fun calibrateGyro(raw: Int, axis: Int): Double =
+        (raw - gyroOffset[axis]) / gyroSens[axis]             // → °/s
+
+    fun calibrateMag(raw: Int, axis: Int): Double =
+        raw * magSens[axis]                                   // → µT
+
+    fun calibrateExG(raw24: Int): Double {
+        val sens = exgVref / (exgGain * 8388607.0) * 1000.0  // → mV
+        return raw24 * sens
     }
 
+    fun calibrateExG16(raw16: Int): Double {
+        val sens = exgVref / (exgGain * 32767.0) * 1000.0
+        return raw16 * sens
+    }
+
+    fun calibrateGsr(raw: Int): Double {
+        // GSR equation from Shimmer manual (Table 2)
+        // Range-dependent RF conversion
+        val p = when (gsrRange) {
+            0 -> Pair(0.0000000065995, -0.000068950)
+            1 -> Pair(0.000000015600, -0.00015245)
+            2 -> Pair(0.000000012500, -0.00010695)
+            3 -> Pair(0.00000017300, -0.0017735)
+            4 -> Pair(0.000000017210, -0.00015245)
+            else -> Pair(0.0000000065995, -0.000068950)
+        }
+        val vCurrent = raw * (3000.0 / 4095.0)        // ADC → mV
+        val conductance = p.first * vCurrent + p.second // S
+        return if (conductance > 0) 1.0 / conductance / 1000.0 else 9999.0  // → kΩ
+    }
+
+    fun calibratePpg(raw: Int): Double = raw * ppgScale   // → mV
 }

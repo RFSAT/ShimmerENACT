@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,7 +61,7 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
             Text("ShimmerENACT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EnactGreen)
-            Text("Version 1.0.0", fontSize = 13.sp, color = EnactOnSurfaceDim)
+            Text("Version 1.0.0", fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.5f))
 
             Spacer(Modifier.height(28.dp))
 
@@ -155,7 +154,7 @@ fun AboutScreen(onBack: () -> Unit) {
             AboutCard(
                 icon = Icons.Default.Code,
                 title = "Open Source",
-                accentColor = EnactOnSurfaceDim
+                accentColor = EnactOnSurface.copy(alpha = 0.6f)
             ) {
                 Text("Source Code", fontWeight = FontWeight.Bold, color = EnactOnSurface, fontSize = 14.sp)
                 Spacer(Modifier.height(4.dp))
@@ -171,10 +170,10 @@ fun AboutScreen(onBack: () -> Unit) {
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.OpenInBrowser, null,
-                        tint = EnactOnSurfaceDim, modifier = Modifier.size(16.dp))
+                        tint = EnactOnSurface.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("github.com/rfsat/ShimmerENACT",
-                        color = EnactOnSurfaceDim, fontSize = 12.sp)
+                        color = EnactOnSurface.copy(alpha = 0.6f), fontSize = 12.sp)
                 }
             }
 
