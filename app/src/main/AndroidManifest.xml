@@ -61,6 +61,11 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Mapbox access token — injected from build.gradle manifestPlaceholders -->
+        <meta-data
+            android:name="com.mapbox.maps.AccessToken"
+            android:value="${MAPBOX_ACCESS_TOKEN}" />
+
     </application>
 
 </manifest>
