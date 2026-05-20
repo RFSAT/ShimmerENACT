@@ -3,6 +3,10 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Mapbox tokens — read from local.properties or CI environment variables
+def mapboxToken = project.findProperty('MAPBOX_ACCESS_TOKEN') ?:
+                  System.getenv('MAPBOX_ACCESS_TOKEN') ?: 'YOUR_MAPBOX_TOKEN_HERE'
+
 android {
     namespace 'com.rfsat.shimmerenact'
     compileSdk 34
@@ -12,13 +16,16 @@ android {
         applicationId "com.rfsat.shimmerenact"
         minSdk 26
         targetSdk 34
-        versionCode 49
-        versionName "1.6.5"
+        versionCode 50
+        versionName "1.6.6"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary true
         }
+
+        // Inject Mapbox public token into AndroidManifest.xml placeholder
+        manifestPlaceholders = [MAPBOX_ACCESS_TOKEN: mapboxToken]
     }
 
     // ── Signing ───────────────────────────────────────────────────────────────
@@ -49,14 +56,6 @@ android {
             }
         }
     }
-
-    // Mapbox access token — read from local.properties (not committed) or CI env var
-    def mapboxToken = project.findProperty('MAPBOX_ACCESS_TOKEN') ?:
-                      System.getenv('MAPBOX_ACCESS_TOKEN') ?: 'YOUR_MAPBOX_TOKEN_HERE'
-    def mapboxDownloadsToken = project.findProperty('MAPBOX_DOWNLOADS_TOKEN') ?:
-                               System.getenv('MAPBOX_DOWNLOADS_TOKEN') ?: ''
-
-    manifestPlaceholders = [MAPBOX_ACCESS_TOKEN: mapboxToken]
 
     buildTypes {
         debug {
