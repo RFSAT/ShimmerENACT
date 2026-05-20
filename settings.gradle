@@ -11,7 +11,18 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
-        maven { url 'https://api.mapbox.com/downloads/v2/releases/maven'; authentication { basic(BasicAuthentication) }; credentials { username = 'mapbox'; password = project.properties['MAPBOX_DOWNLOADS_TOKEN'] ?: System.getenv('MAPBOX_DOWNLOADS_TOKEN') ?: '' } }
+        maven {
+            url 'https://api.mapbox.com/downloads/v2/releases/maven'
+            authentication { basic(BasicAuthentication) }
+            credentials {
+                username = 'mapbox'
+                // In settings.gradle, project.properties is not available.
+                // Read from gradle.properties / local.properties via providers,
+                // or fall back to an environment variable (used in CI).
+                password = providers.gradleProperty('MAPBOX_DOWNLOADS_TOKEN')
+                              .getOrElse(System.getenv('MAPBOX_DOWNLOADS_TOKEN') ?: '')
+            }
+        }
     }
 }
 
