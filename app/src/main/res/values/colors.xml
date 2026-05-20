@@ -4,4 +4,5 @@
     <color name="enact_green">#43AF81</color>
     <color name="enact_lime">#86BA39</color>
     <color name="enact_dark">#082C28</color>
+    <color name="enact_dark_mid">#0D3D37</color>
 </resources>

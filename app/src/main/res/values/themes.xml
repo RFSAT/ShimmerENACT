@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.ShimmerENACT" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+    <!--
+        Base theme. The app is fully Compose so this only controls the
+        system window chrome (status/nav bar colours) before Compose takes over.
+        Using android:Theme.Material.Light.NoActionBar avoids needing the
+        Material3 AAR on the resource classpath.
+    -->
+    <style name="Theme.ShimmerENACT" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/enact_dark</item>
+        <item name="android:navigationBarColor">@color/enact_dark_mid</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/enact_dark</item>
     </style>
 
+    <!-- Splash screen theme shown before Compose initialises -->
     <style name="Theme.ShimmerENACT.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#082C28</item>
+        <item name="windowSplashScreenBackground">@color/enact_dark</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon</item>
-        <item name="windowSplashScreenIconBackgroundColor">#43AF81</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/enact_green</item>
         <item name="postSplashScreenTheme">@style/Theme.ShimmerENACT</item>
     </style>
 </resources>
