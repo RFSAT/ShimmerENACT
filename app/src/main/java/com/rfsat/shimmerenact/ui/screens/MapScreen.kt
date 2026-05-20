@@ -32,7 +32,6 @@ import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.extension.style.sources.getSourceAs
 import com.mapbox.maps.plugin.animation.camera
 import com.mapbox.maps.plugin.animation.flyTo
-import com.rfsat.shimmerenact.BuildConfig
 import com.rfsat.shimmerenact.data.models.LocationPoint
 import com.rfsat.shimmerenact.ui.theme.*
 import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
@@ -112,6 +111,9 @@ fun MapScreen(viewModel: ShimmerViewModel) {
         // ── Mapbox MapView ────────────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
+                // ResourceOptionsManager sets the token from the manifest placeholder.
+                // If the placeholder was not replaced with a real pk.eyJ1... token,
+                // Mapbox will log an error but the map will simply stay blank.
                 MapView(ctx).also { mv ->
                     mapView = mv
                     mv.mapboxMap.loadStyle(Style.MAPBOX_STREETS) { style ->
