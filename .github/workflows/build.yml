@@ -21,7 +21,13 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
+
+      # This action installs Gradle, validates the wrapper,
+      # and handles a missing gradle-wrapper.jar automatically.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper   # uses version from gradle-wrapper.properties
 
       - name: Decode keystore
         if: github.ref_type == 'tag'
@@ -40,35 +46,6 @@ jobs:
           mkdir -p ~/.gradle
           echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
           echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"     >> ~/.gradle/gradle.properties
-
-      # gradle-wrapper.jar must be present for ./gradlew to work.
-      # If it is missing from the repo (e.g. accidentally not committed),
-      # download it from the Gradle distribution zip.
-      - name: Ensure gradle-wrapper.jar is present
-        run: |
-          JAR=gradle/wrapper/gradle-wrapper.jar
-          SIZE=$(wc -c < "$JAR" 2>/dev/null || echo 0)
-          if [ ! -f "$JAR" ] || [ "$SIZE" -lt 50000 ]; then
-            echo "gradle-wrapper.jar missing or empty — downloading..."
-            VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
-              | grep -oP 'gradle-\K[0-9.]+(?=-)')
-            echo "Gradle version: $VERSION"
-            curl -fL "https://services.gradle.org/distributions/gradle-${VERSION}-bin.zip" \
-              -o /tmp/gradle.zip
-            python3 - << 'PYEOF'
-          import zipfile, shutil, glob, os
-          with zipfile.ZipFile('/tmp/gradle.zip') as z:
-              jars = [n for n in z.namelist() if 'gradle-wrapper' in n and n.endswith('.jar')]
-              print(f"Found wrapper jars: {jars}")
-              if jars:
-                  with z.open(jars[0]) as src, open('gradle/wrapper/gradle-wrapper.jar','wb') as dst:
-                      shutil.copyfileobj(src, dst)
-                  print(f"Extracted {jars[0]}")
-          PYEOF
-            echo "gradle-wrapper.jar size: $(wc -c < $JAR) bytes"
-          else
-            echo "gradle-wrapper.jar present ($(wc -c < $JAR) bytes)"
-          fi
 
       - name: Extract version name
         id: version
