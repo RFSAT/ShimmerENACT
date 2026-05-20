@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.rfsat.shimmerenact.data.bluetooth.ShimmerProtocol
 import com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager
 import com.rfsat.shimmerenact.data.models.*
+import com.rfsat.shimmerenact.data.repository.AppLog
 import com.rfsat.shimmerenact.data.repository.PreferencesRepository
 import com.rfsat.shimmerenact.data.repository.RecordingRepository
 import com.rfsat.shimmerenact.data.repository.LocationRepository
@@ -187,6 +188,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         val clamped = hz.coerceIn(1, 512)
         updateConfig(type) { it.copy(samplingRateHz = clamped) }
         AppLog.i("VM", "Hardware rate set to $clamped Hz for $type")
+    }
+
+    private fun updateConfig(type: SensorType, update: (SensorConfig) -> SensorConfig) {
+        when (type) {
+            SensorType.GSR_PLUS -> _gsrConfig.update(update)
+            SensorType.EXG      -> _exgConfig.update(update)
+            SensorType.CUSTOM   -> _customConfig.update(update)
+        }
+        _uiState.update { it.copy(config = activeConfig.value) }
     }
 
     fun updateBtRadioId(type: SensorType, id: String) {

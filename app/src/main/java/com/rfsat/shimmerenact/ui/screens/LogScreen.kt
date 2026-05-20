@@ -30,8 +30,7 @@ import com.rfsat.shimmerenact.data.repository.LogEntry
 import com.rfsat.shimmerenact.data.repository.LogLevel
 import com.rfsat.shimmerenact.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun LogScreen(onBack: () -> Unit) {
     val context = LocalContext.current

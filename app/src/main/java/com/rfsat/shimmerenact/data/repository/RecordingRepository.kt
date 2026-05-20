@@ -27,17 +27,22 @@ class RecordingRepository(private val context: Context) {
 
     // ─── Start a new recording session ───────────────────────────────────────
     fun lastSession(): RecordingSession? {
-        val root = runCatching { getRootDir() }.getOrNull() ?: return null
-        val dir = root.listFiles { f -> f.isDirectory }
-            ?.maxByOrNull { it.lastModified() } ?: return null
-        return RecordingSession(
-            sessionId = dir.name,
-            deviceName = dir.name,
-            startTimeMs = dir.lastModified(),
-            files = dir.listFiles { f -> f.extension == "csv" }
-                ?.map { RecordingFile(it.nameWithoutExtension, it.absolutePath, it.length(), it.lastModified()) }
-                ?: emptyList()
-        )
+        return try {
+            val downloads = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS)
+            val root = java.io.File(downloads, "ShimmerENACT")
+            if (!root.exists()) return null
+            val dir = root.listFiles { f -> f.isDirectory }
+                ?.maxByOrNull { it.lastModified() } ?: return null
+            RecordingSession(
+                sessionId    = dir.name,
+                deviceName   = dir.name,
+                startTimeMs  = dir.lastModified(),
+                files        = dir.listFiles { f: java.io.File -> f.extension == "csv" }
+                    ?.map { f -> RecordingFile(f.nameWithoutExtension, f.absolutePath, f.length(), f.lastModified()) }
+                    ?: emptyList()
+            )
+        } catch (_: Exception) { null }
     }
 
         suspend fun startRecording(
