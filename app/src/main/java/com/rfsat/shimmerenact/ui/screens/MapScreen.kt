@@ -11,9 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -28,78 +26,70 @@ import com.mapbox.maps.extension.style.layers.generated.lineLayer
 import com.mapbox.maps.extension.style.layers.properties.generated.LineCap
 import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.extension.style.sources.addSource
+import com.mapbox.maps.extension.style.sources.generated.GeoJsonSource
 import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.extension.style.sources.getSourceAs
 import com.mapbox.maps.plugin.animation.camera
-import com.mapbox.maps.plugin.animation.flyTo
 import com.rfsat.shimmerenact.data.models.LocationPoint
 import com.rfsat.shimmerenact.ui.theme.*
 import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
-import java.text.SimpleDateFormat
-import java.util.*
 
-private const val SOURCE_TRACE    = "enact-trace-source"
-private const val SOURCE_PREV     = "enact-prev-source"
-private const val SOURCE_DOT      = "enact-dot-source"
-private const val LAYER_TRACE     = "enact-trace-layer"
-private const val LAYER_PREV      = "enact-prev-layer"
-private const val LAYER_DOT       = "enact-dot-layer"
+private const val SOURCE_TRACE = "enact-trace-source"
+private const val SOURCE_PREV  = "enact-prev-source"
+private const val SOURCE_DOT   = "enact-dot-source"
+private const val LAYER_TRACE  = "enact-trace-layer"
+private const val LAYER_PREV   = "enact-prev-layer"
+private const val LAYER_DOT    = "enact-dot-layer"
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(viewModel: ShimmerViewModel) {
-    val uiState        by viewModel.uiState.collectAsState()
-    val currentLoc      = uiState.currentLocation
-    val trace           = uiState.locationTrace
-    val sessions        by viewModel.sessions.collectAsState()
+    val uiState      by viewModel.uiState.collectAsState()
+    val currentLoc    = uiState.currentLocation
+    val trace         = uiState.locationTrace
+    val sessions     by viewModel.sessions.collectAsState()
 
-    // Load last-session GPS from CSV — parsed lazily
+    // Parse GPS columns from the most recent recording session CSV
     val prevTrace = remember(sessions) {
-        sessions.firstOrNull()?.let { session ->
-            loadGpsFromSession(session.files.firstOrNull()?.path)
-        } ?: emptyList()
+        sessions.firstOrNull()?.files?.firstOrNull()?.path
+            ?.let { loadGpsFromCsv(it) } ?: emptyList()
     }
 
-    var mapView by remember { mutableStateOf<MapView?>(null) }
+    var mapView    by remember { mutableStateOf<MapView?>(null) }
     var followMode by remember { mutableStateOf(true) }
-    var showInfo   by remember { mutableStateOf(false) }
 
-    // Whenever trace updates, push to Mapbox layers
-    LaunchedEffect(trace, prevTrace) {
+    // Update map layers whenever trace or position changes
+    LaunchedEffect(trace, prevTrace, currentLoc) {
         val mv = mapView ?: return@LaunchedEffect
         mv.mapboxMap.getStyle { style ->
             // Live trace
-            val pts = trace.map { Point.fromLngLat(it.lon, it.lat) }
-            val liveGeo = FeatureCollection.fromFeatures(
-                listOf(Feature.fromGeometry(LineString.fromLngLats(pts)))
-            )
-            style.getSourceAs<com.mapbox.maps.extension.style.sources.generated.GeoJsonSource>(SOURCE_TRACE)
-                ?.featureCollection(liveGeo)
-
-            // Previous session trace
-            val ppts = prevTrace.map { Point.fromLngLat(it.lon, it.lat) }
-            val prevGeo = FeatureCollection.fromFeatures(
-                listOf(Feature.fromGeometry(LineString.fromLngLats(ppts)))
-            )
-            style.getSourceAs<com.mapbox.maps.extension.style.sources.generated.GeoJsonSource>(SOURCE_PREV)
-                ?.featureCollection(prevGeo)
-
-            // Current position dot
-            val dotGeo = currentLoc?.let {
+            style.getSourceAs<GeoJsonSource>(SOURCE_TRACE)?.featureCollection(
                 FeatureCollection.fromFeatures(listOf(
-                    Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat))
+                    Feature.fromGeometry(
+                        LineString.fromLngLats(trace.map { Point.fromLngLat(it.lon, it.lat) })
+                    )
                 ))
-            } ?: FeatureCollection.fromFeatures(emptyList())
-            style.getSourceAs<com.mapbox.maps.extension.style.sources.generated.GeoJsonSource>(SOURCE_DOT)
-                ?.featureCollection(dotGeo)
+            )
+            // Previous session trace
+            style.getSourceAs<GeoJsonSource>(SOURCE_PREV)?.featureCollection(
+                FeatureCollection.fromFeatures(listOf(
+                    Feature.fromGeometry(
+                        LineString.fromLngLats(prevTrace.map { Point.fromLngLat(it.lon, it.lat) })
+                    )
+                ))
+            )
+            // Current position dot
+            val dotFeatures = if (currentLoc != null) listOf(
+                Feature.fromGeometry(Point.fromLngLat(currentLoc.lon, currentLoc.lat))
+            ) else emptyList()
+            style.getSourceAs<GeoJsonSource>(SOURCE_DOT)
+                ?.featureCollection(FeatureCollection.fromFeatures(dotFeatures))
         }
     }
 
-    // Follow current position
+    // Follow current position when follow mode is on
     LaunchedEffect(currentLoc, followMode) {
         if (!followMode || currentLoc == null) return@LaunchedEffect
-        val mv = mapView ?: return@LaunchedEffect
-        mv.mapboxMap.setCamera(
+        mapView?.mapboxMap?.setCamera(
             CameraOptions.Builder()
                 .center(Point.fromLngLat(currentLoc.lon, currentLoc.lat))
                 .zoom(16.0)
@@ -108,21 +98,18 @@ fun MapScreen(viewModel: ShimmerViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
-        // ── Mapbox MapView ────────────────────────────────────────────────────
+
+        // ── Mapbox map ────────────────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
-                // ResourceOptionsManager sets the token from the manifest placeholder.
-                // If the placeholder was not replaced with a real pk.eyJ1... token,
-                // Mapbox will log an error but the map will simply stay blank.
                 MapView(ctx).also { mv ->
                     mapView = mv
                     mv.mapboxMap.loadStyle(Style.MAPBOX_STREETS) { style ->
-                        // Sources
                         style.addSource(geoJsonSource(SOURCE_TRACE) {})
                         style.addSource(geoJsonSource(SOURCE_PREV)  {})
                         style.addSource(geoJsonSource(SOURCE_DOT)   {})
 
-                        // Previous session trace — dashed grey
+                        // Previous session — grey dashed
                         style.addLayer(lineLayer(LAYER_PREV, SOURCE_PREV) {
                             lineColor("#888888")
                             lineWidth(3.0)
@@ -131,7 +118,6 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                             lineJoin(LineJoin.ROUND)
                             lineDasharray(listOf(2.0, 2.0))
                         })
-
                         // Live trace — ENACT green
                         style.addLayer(lineLayer(LAYER_TRACE, SOURCE_TRACE) {
                             lineColor("#43AF81")
@@ -139,8 +125,7 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                             lineCap(LineCap.ROUND)
                             lineJoin(LineJoin.ROUND)
                         })
-
-                        // Current position dot — accent yellow
+                        // Position dot — accent green with white ring
                         style.addLayer(circleLayer(LAYER_DOT, SOURCE_DOT) {
                             circleRadius(9.0)
                             circleColor("#86BA39")
@@ -153,55 +138,46 @@ fun MapScreen(viewModel: ShimmerViewModel) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Top info bar ──────────────────────────────────────────────────────
+        // ── Info overlay ──────────────────────────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Location chip
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = EnactDark.copy(alpha = 0.85f),
+                color = EnactDark.copy(alpha = 0.88f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (currentLoc != null) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.LocationOn, null, tint = EnactGreen, modifier = Modifier.size(16.dp))
-                        Column {
+                        Icon(Icons.Default.LocationOn, null,
+                            tint = EnactGreen, modifier = Modifier.size(16.dp))
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                "%.6f°, %.6f°".format(currentLoc.lat, currentLoc.lon),
+                                "%.6f°,  %.6f°".format(currentLoc.lat, currentLoc.lon),
                                 color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Alt: %.1f m  ·  Acc: ±%.0f m".format(currentLoc.altM, currentLoc.accuracyM),
-                                color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp
+                                "Alt %.1f m  ·  ±%.0f m".format(currentLoc.altM, currentLoc.accuracyM),
+                                color = Color.White.copy(alpha = 0.65f), fontSize = 10.sp
                             )
                         }
-                        Spacer(Modifier.weight(1f))
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                "${trace.size} pts",
-                                color = EnactGreen, fontSize = 10.sp
-                            )
-                            Text(
-                                "live",
-                                color = EnactGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text("${trace.size} pts", color = EnactGreen, fontSize = 10.sp)
                     }
                 } else {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.LocationOff, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.LocationOff, null,
+                            tint = Color.Gray, modifier = Modifier.size(16.dp))
                         Text("No GPS fix", color = Color.Gray, fontSize = 12.sp)
                     }
                 }
@@ -210,18 +186,15 @@ fun MapScreen(viewModel: ShimmerViewModel) {
             // Legend
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = EnactDark.copy(alpha = 0.85f)
+                color = EnactDark.copy(alpha = 0.88f)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendDot(EnactGreen, "Current session")
+                    LegendDot(EnactGreen,       "This session")
                     LegendDot(Color(0xFF888888), "Last recording")
-                    if (prevTrace.isEmpty()) {
-                        Text("(no prev)", color = Color.Gray, fontSize = 9.sp)
-                    }
                 }
             }
         }
@@ -241,31 +214,34 @@ fun MapScreen(viewModel: ShimmerViewModel) {
             ) {
                 Icon(
                     if (followMode) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
-                    contentDescription = "Follow position",
+                    contentDescription = "Follow",
                     tint = Color.White
                 )
             }
 
-            // Fit all
+            // Fit all points
             SmallFloatingActionButton(
                 onClick = {
                     val mv = mapView ?: return@SmallFloatingActionButton
-                    val allPts = (trace + prevTrace).map { Point.fromLngLat(it.lon, it.lat) }
-                    if (allPts.isNotEmpty()) {
-                        followMode = false
-                        val bounds = CoordinateBounds.hull(allPts)
-                        mv.mapboxMap.setCamera(
-                            mv.mapboxMap.cameraForCoordinateBounds(
-                                bounds,
-                                EdgeInsets(80.0, 40.0, 40.0, 40.0),
-                                null, null
-                            )
+                    val allPts = (trace + prevTrace)
+                        .map { Point.fromLngLat(it.lon, it.lat) }
+                    if (allPts.size < 2) return@SmallFloatingActionButton
+                    followMode = false
+                    // Build bounding box manually — CoordinateBounds.hull() takes
+                    // vararg Point, not List<Point>; spread operator resolves this.
+                    val bounds = CoordinateBounds.hull(*allPts.toTypedArray())
+                    mv.mapboxMap.setCamera(
+                        mv.mapboxMap.cameraForCoordinateBounds(
+                            bounds,
+                            EdgeInsets(80.0, 40.0, 40.0, 40.0),
+                            null, null
                         )
-                    }
+                    )
                 },
                 containerColor = EnactDarkMid
             ) {
-                Icon(Icons.Default.FitScreen, contentDescription = "Fit all", tint = Color.White)
+                Icon(Icons.Default.FitScreen, contentDescription = "Fit all",
+                    tint = Color.White)
             }
         }
     }
@@ -277,36 +253,29 @@ private fun LegendDot(color: Color, label: String) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .background(color, CircleShape)
-        )
+        Box(Modifier.size(8.dp).background(color, CircleShape))
         Text(label, color = Color.White, fontSize = 9.sp)
     }
 }
 
-/** Parse GPS columns from a CSV file written by RecordingRepository. */
-private fun loadGpsFromSession(csvPath: String?): List<LocationPoint> {
-    if (csvPath == null) return emptyList()
+/** Parse GPS columns from a CSV written by RecordingRepository. */
+private fun loadGpsFromCsv(path: String?): List<LocationPoint> {
+    if (path == null) return emptyList()
     return try {
-        java.io.File(csvPath).bufferedReader().useLines { lines ->
-            lines
-                .filter { !it.startsWith("#") }
-                .drop(1)              // skip header row
+        java.io.File(path).bufferedReader().useLines { lines ->
+            lines.filter { !it.startsWith("#") }
+                .drop(1)   // skip header row
                 .mapNotNull { line ->
-                    val cols = line.split(",")
-                    // cols: timestamp_iso, timestamp_ms, value, lat, lon, alt, acc
-                    if (cols.size < 7) return@mapNotNull null
-                    val lat = cols[3].trim().toDoubleOrNull() ?: return@mapNotNull null
-                    val lon = cols[4].trim().toDoubleOrNull() ?: return@mapNotNull null
-                    val alt = cols[5].trim().toDoubleOrNull() ?: 0.0
-                    val acc = cols[6].trim().toFloatOrNull()  ?: 0f
-                    val ts  = cols[1].trim().toLongOrNull()   ?: 0L
+                    val c = line.split(",")
+                    if (c.size < 7) return@mapNotNull null
+                    val lat = c[3].trim().toDoubleOrNull() ?: return@mapNotNull null
+                    val lon = c[4].trim().toDoubleOrNull() ?: return@mapNotNull null
+                    val alt = c[5].trim().toDoubleOrNull() ?: 0.0
+                    val acc = c[6].trim().toFloatOrNull()  ?: 0f
+                    val ts  = c[1].trim().toLongOrNull()   ?: 0L
                     if (lat == 0.0 && lon == 0.0) return@mapNotNull null
                     LocationPoint(lat, lon, alt, acc, ts)
-                }
-                .toList()
+                }.toList()
         }
     } catch (_: Exception) { emptyList() }
 }
