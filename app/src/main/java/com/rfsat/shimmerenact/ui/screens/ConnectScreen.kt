@@ -32,6 +32,7 @@ import com.rfsat.shimmerenact.ui.theme.*
 import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
 
 @OptIn(ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectScreen(
     viewModel: ShimmerViewModel,

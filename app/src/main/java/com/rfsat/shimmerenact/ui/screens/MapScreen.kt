@@ -48,11 +48,11 @@ fun MapScreen(viewModel: ShimmerViewModel) {
     val uiState     by viewModel.uiState.collectAsState()
     val currentLoc   = uiState.currentLocation
     val trace        = uiState.locationTrace
-    val sessions    by viewModel.sessions.collectAsState()
+    val recordings  by viewModel.recordings.collectAsState()
 
-    // Parse GPS columns from the most recent recording session CSV
-    val prevTrace = remember(sessions) {
-        sessions.firstOrNull()?.files?.firstOrNull()?.path
+    // Parse GPS columns from the most recent recording CSV
+    val prevTrace = remember(recordings) {
+        recordings.firstOrNull()?.path
             ?.let { loadGpsFromCsv(it) } ?: emptyList()
     }
 

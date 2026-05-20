@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -30,6 +31,7 @@ import com.rfsat.shimmerenact.data.repository.LogLevel
 import com.rfsat.shimmerenact.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LogScreen(onBack: () -> Unit) {
     val context = LocalContext.current
