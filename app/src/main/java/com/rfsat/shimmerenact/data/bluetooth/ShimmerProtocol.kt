@@ -62,6 +62,9 @@ object ShimmerProtocol {
     const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"
 
     // Packet timeouts
+    fun registerToHz(reg: Int): Int =
+        (32768.0 / reg.coerceIn(1, 32767)).toInt().coerceIn(1, 6000)
+
     const val RESPONSE_TIMEOUT_MS = 3000L
     const val STREAM_IDLE_TIMEOUT_MS = 5000L
 
