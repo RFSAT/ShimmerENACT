@@ -22,3 +22,6 @@ keystore.properties
 # Android Studio
 .idea/
 *.iml
+
+# Gradle wrapper JAR must be committed
+!gradle/wrapper/gradle-wrapper.jar
