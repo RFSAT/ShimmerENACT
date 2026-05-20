@@ -23,5 +23,5 @@ keystore.properties
 .idea/
 *.iml
 
-# Gradle wrapper JAR must be committed
-!gradle/wrapper/gradle-wrapper.jar
+# gradle-wrapper.jar is downloaded fresh in CI (see workflow)
+gradle/wrapper/gradle-wrapper.jar
