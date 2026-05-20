@@ -33,18 +33,15 @@ jobs:
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
           fi
 
-      # Write Mapbox tokens into gradle.properties so settings.gradle can read them
-      # via providers.gradleProperty() during dependency resolution.
       - name: Write Mapbox tokens to gradle.properties
         run: |
           mkdir -p ~/.gradle
           echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
           echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"       >> ~/.gradle/gradle.properties
 
-      # Download the legitimate gradle-wrapper.jar from the official Gradle distribution.
-      # The jar in the repo may be absent or corrupt (known issue when committed via
-      # a network-restricted environment). The GitHub Actions runner can always reach
-      # services.gradle.org, so we fetch it here before invoking ./gradlew.
+      # The bootstrap jar lives at gradle-X.Y/lib/gradle-wrapper.jar inside the
+      # distribution zip. The versioned jars under lib/plugins/ are different
+      # artifacts — using them causes "NoClassDefFoundError: IDownload".
       - name: Download gradle-wrapper.jar
         run: |
           VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
@@ -53,29 +50,28 @@ jobs:
           curl -fsSL \
             "https://services.gradle.org/distributions/gradle-${VERSION}-bin.zip" \
             -o /tmp/gradle.zip
-          unzip -p /tmp/gradle.zip \
-            "gradle-${VERSION}/lib/plugins/gradle-wrapper-${VERSION}.jar" \
-            > gradle/wrapper/gradle-wrapper.jar 2>/dev/null || \
-          unzip -p /tmp/gradle.zip \
-            "gradle-${VERSION}/lib/gradle-wrapper-*.jar" \
-            > gradle/wrapper/gradle-wrapper.jar 2>/dev/null || \
-          python3 << 'EOF'
-          import zipfile, sys
+          python3 - << PYEOF
+          import zipfile, sys, os
           with zipfile.ZipFile('/tmp/gradle.zip') as z:
-              candidates = [n for n in z.namelist()
-                            if 'gradle-wrapper' in n and n.endswith('.jar')]
-              print(f"Wrapper jar candidates: {candidates}", file=sys.stderr)
-              with z.open(candidates[0]) as src, \
-                   open('gradle/wrapper/gradle-wrapper.jar', 'wb') as dst:
+              # The correct bootstrap launcher is at lib/gradle-wrapper.jar
+              # (no version suffix, not in plugins/ subdirectory)
+              target = next(
+                  (n for n in z.namelist()
+                   if n.endswith('/lib/gradle-wrapper.jar')),
+                  None
+              )
+              if target is None:
+                  print('ERROR: gradle-wrapper.jar not found in distribution', file=sys.stderr)
+                  sys.exit(1)
+              print(f'Extracting: {target}', file=sys.stderr)
+              os.makedirs('gradle/wrapper', exist_ok=True)
+              with z.open(target) as src, open('gradle/wrapper/gradle-wrapper.jar', 'wb') as dst:
                   dst.write(src.read())
-              print(f"Extracted: {candidates[0]}", file=sys.stderr)
-          EOF
-          SIZE=$(wc -c < gradle/wrapper/gradle-wrapper.jar)
-          echo "gradle-wrapper.jar: ${SIZE} bytes"
-          if [ "$SIZE" -lt 50000 ]; then
-            echo "ERROR: gradle-wrapper.jar is too small (${SIZE} bytes) — extraction failed"
-            exit 1
-          fi
+              size = os.path.getsize('gradle/wrapper/gradle-wrapper.jar')
+              print(f'Size: {size} bytes', file=sys.stderr)
+              sys.exit(0 if size > 50000 else 1)
+          PYEOF
+          echo "gradle-wrapper.jar ready: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
 
       - name: Extract version name
         id: version
