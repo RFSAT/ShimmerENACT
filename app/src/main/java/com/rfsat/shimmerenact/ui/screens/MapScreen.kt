@@ -22,7 +22,6 @@ import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.LineString
 import com.mapbox.geojson.Point
 import com.mapbox.maps.*
-import com.mapbox.maps.MapboxOptions
 import com.mapbox.maps.extension.style.layers.addLayer
 import com.mapbox.maps.extension.style.layers.generated.circleLayer
 import com.mapbox.maps.extension.style.layers.generated.lineLayer
@@ -144,9 +143,6 @@ fun MapScreen(viewModel: ShimmerViewModel) {
         // ── Mapbox map ─────────────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
-                // Set the token programmatically before MapView init to avoid crash
-                // when the manifest placeholder was not substituted at build time.
-                try { MapboxOptions.accessToken = mapboxToken } catch (_: Throwable) {}
                 MapView(ctx).also { mv ->
                     mapView = mv
                     mv.mapboxMap.loadStyle(Style.MAPBOX_STREETS) { style ->

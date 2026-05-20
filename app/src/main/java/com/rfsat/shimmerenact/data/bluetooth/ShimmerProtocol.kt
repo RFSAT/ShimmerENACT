@@ -89,7 +89,8 @@ object ShimmerPacketParser {
     fun parse(
         raw: ByteArray,
         sensorBitmap: IntArray,          // [byte0, byte1, byte2]
-        calParams: CalibrationParams
+        calParams: CalibrationParams,
+        channels: List<Int> = emptyList()  // from inquiry channel list; empty = use bitmap
     ): Map<String, Double> {
         val result = mutableMapOf<String, Double>()
         var offset = 0

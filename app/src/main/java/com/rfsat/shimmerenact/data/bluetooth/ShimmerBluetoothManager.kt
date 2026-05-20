@@ -47,6 +47,7 @@ class ShimmerBluetoothManager(private val context: Context) {
     private var outputStream: OutputStream? = null
     private var streamJob: Job? = null
     private var sensorBitmap = intArrayOf(0, 0, 0)
+    private var channelList: List<Int> = emptyList()
     private var calParams = CalibrationParams()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sppUUID = UUID.fromString(ShimmerProtocol.SPP_UUID)
@@ -198,56 +199,49 @@ class ShimmerBluetoothManager(private val context: Context) {
     // ─── Inquiry ─────────────────────────────────────────────────────────────
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
+        val response = readResponseWithTimeout(ShimmerProtocol.RESPONSE_TIMEOUT_MS)
+        AppLog.ok("BT", "=== Inquiry raw (${response?.size ?: 0}B): " +
+            (response?.take(20)?.joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } ?: "null") + " ===")
 
-        // Shimmer3 inquiry response format:
-        //   [0xFF ACK] [0x02 RESPONSE_MARKER] [num_ch] [buf_size] [sr_lo] [sr_hi]
-        //   [bitmap0] [bitmap1] [bitmap2] [ch1_id] [ch2_id] ...
-        //
-        // The ACK (0xFF) and response may arrive in the same read() or separately.
-        // We scan byte-by-byte for the 0x02 marker then collect 8 more bytes.
-        val inStream = inputStream
-        val inquiryBytes = if (inStream != null) {
-            withTimeoutOrNull(ShimmerProtocol.RESPONSE_TIMEOUT_MS) {
-                val collected = mutableListOf<Byte>()
-                var foundMarker = false
-                // Read up to 64 bytes looking for the 0x02 inquiry-response marker
-                repeat(64) scan@{
-                    if (foundMarker && collected.size >= 9) return@scan
-                    val b = inStream.read()
-                    if (b == -1) return@withTimeoutOrNull null
-                    if (!foundMarker) {
-                        if (b == 0x02) { foundMarker = true; collected.add(b.toByte()) }
-                        // else: skip ACK (0xFF) or any other leading byte
-                    } else {
-                        collected.add(b.toByte())
-                    }
-                }
-                if (collected.size >= 9) collected.toByteArray() else null
-            }
-        } else null
+        // The Shimmer3 may send: [0xFF ACK][0x02 code][rate×2][bitmap×3][nch][codes...]
+        // or just:               [0x02 code][rate×2][bitmap×3][nch][codes...]
+        // Detect which case by checking the first byte and adjust offset accordingly.
+        val bodyStart = if (response != null && response.isNotEmpty() &&
+            response[0].toInt() and 0xFF == 0xFF) 1 else 0
 
-        if (inquiryBytes != null && inquiryBytes.size >= 9) {
-            // inquiryBytes[0] = 0x02 marker
-            // inquiryBytes[1] = num_channels
-            // inquiryBytes[2] = buf_size
-            // inquiryBytes[3] = sr_lo
-            // inquiryBytes[4] = sr_hi
-            // inquiryBytes[5] = bitmap byte 0  ← enabled sensors
-            // inquiryBytes[6] = bitmap byte 1
-            // inquiryBytes[7] = bitmap byte 2
-            sensorBitmap[0] = inquiryBytes[5].toInt() and 0xFF
-            sensorBitmap[1] = inquiryBytes[6].toInt() and 0xFF
-            sensorBitmap[2] = inquiryBytes[7].toInt() and 0xFF
-            AppLog.ok("BT", "Inquiry OK — sensor bitmap: " +
-                "0x%02X 0x%02X 0x%02X".format(sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
-            AppLog.d("BT", "Raw (${inquiryBytes.size} bytes): " +
-                inquiryBytes.take(12).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+        // Body layout (from bodyStart): [0x02][rate_lo][rate_hi][bm0][bm1][bm2][nch][codes...]
+        val minBodyLen = 7   // response-code(1) + rate(2) + bitmap(3) + nch(1)
+
+        if (response != null && response.size >= bodyStart + minBodyLen) {
+            val b = bodyStart  // short alias
+            sensorBitmap[0] = response[b + 3].toInt() and 0xFF
+            sensorBitmap[1] = response[b + 4].toInt() and 0xFF
+            sensorBitmap[2] = response[b + 5].toInt() and 0xFF
+
+            val regLo    = response[b + 1].toInt() and 0xFF
+            val regHi    = response[b + 2].toInt() and 0xFF
+            val actualHz = ShimmerProtocol.registerToHz(regLo or (regHi shl 8))
+
+            val numChannels = response[b + 6].toInt() and 0xFF
+            val codesStart  = b + 7
+            channelList = if (numChannels > 0 && response.size >= codesStart + numChannels) {
+                (0 until numChannels).map { response[codesStart + it].toInt() and 0xFF }
+            } else emptyList()
+
+            AppLog.ok("BT", "Inquiry OK (bodyStart=$bodyStart) — " +
+                "bitmap: 0x%02X 0x%02X 0x%02X  rate: %d Hz  channels(%d): %s".format(
+                sensorBitmap[0], sensorBitmap[1], sensorBitmap[2], actualHz, numChannels,
+                channelList.joinToString { "0x%02X".format(it) }))
+            AppLog.i("BT", "Full response (${response.size}B): " +
+                response.take(16).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
         } else {
-            AppLog.w("BT", "Inquiry failed (${inquiryBytes?.size ?: 0} bytes) — " +
-                "using default bitmap for ${config.sensorType.name}")
+            AppLog.w("BT", "Inquiry bad/timeout — size=${response?.size ?: 0}B, using default bitmap for ${config.sensorType.name}")
+            AppLog.d("BT", "Raw response: " + (response?.take(8)
+                ?.joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) } ?: "null"))
             sensorBitmap = defaultBitmapForType(config.sensorType)
-            AppLog.d("BT", "Default bitmap: " +
-                "0x%02X 0x%02X 0x%02X".format(sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
+            channelList = emptyList()
+            AppLog.d("BT", "Default bitmap: 0x%02X 0x%02X 0x%02X".format(
+                sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
         }
     }
 
@@ -322,7 +316,7 @@ class ShimmerBluetoothManager(private val context: Context) {
                     }
 
                     val raw    = packetBuf.copyOf(bytesRead)
-                    val values = ShimmerPacketParser.parse(raw, sensorBitmap, calParams)
+                    val values = ShimmerPacketParser.parse(raw, sensorBitmap, calParams, channelList)
 
                     if (values.isEmpty()) {
                         AppLog.d("BT", "Parser returned empty map for packet of $bytesRead bytes")
