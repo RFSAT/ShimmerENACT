@@ -46,7 +46,7 @@ fun DashboardScreen(
 
     // Chart signal selection — show first 4 by default
     var selectedChartSignals by remember(signals) {
-        mutableStateOf(signals.take(4).map { it.key }.toSet())
+        mutableStateOf(signals.take(6).map { it.key }.toSet())  // gsr, ppg, accel_xyz, gyro_x by default
     }
     var showSignalSelector by remember { mutableStateOf(false) }
     var showChart by remember { mutableStateOf(true) }

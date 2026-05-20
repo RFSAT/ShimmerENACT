@@ -56,17 +56,23 @@ fun MapScreen(viewModel: ShimmerViewModel) {
             ?.let { loadGpsFromCsv(it) } ?: emptyList()
     }
 
-    // Read Mapbox token from manifest meta-data at runtime to avoid crash
-    // if token placeholder was never replaced.
+    // Read Mapbox token — try manifest meta-data keys used by different SDK versions
     val mapboxToken = remember {
         try {
             val ai = context.packageManager.getApplicationInfo(
                 context.packageName, PackageManager.GET_META_DATA
             )
-            ai.metaData?.getString("com.mapbox.maps.AccessToken") ?: ""
+            val meta = ai.metaData
+            // Mapbox SDK 11 uses "com.mapbox.maps.AccessToken"
+            // Older SDKs used "com.mapbox.token"
+            meta?.getString("com.mapbox.maps.AccessToken")
+                ?: meta?.getString("com.mapbox.token")
+                ?: ""
         } catch (_: Exception) { "" }
     }
 
+    // Token is valid if it's a real public token (starts with pk.)
+    // "YOUR_MAPBOX_TOKEN_HERE" or empty string means not configured
     val tokenValid = mapboxToken.startsWith("pk.")
 
     var mapView    by remember { mutableStateOf<MapView?>(null) }
@@ -125,7 +131,8 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                     Text("Mapbox Token Required",
                         color = EnactOnSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Run extract_mapbox_token.py with sensor_placement.html to configure the map, then rebuild the app.",
+                        "Set MAPBOX_ACCESS_TOKEN in local.properties (run extract_mapbox_token.py) " +
+                        "and in GitHub Actions secrets, then rebuild the app.",
                         color = EnactOnSurface.copy(alpha = 0.7f),
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center

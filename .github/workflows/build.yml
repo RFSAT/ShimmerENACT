@@ -31,6 +31,9 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > $RUNNER_TEMP/release.jks
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
+            echo "HAS_KEYSTORE=true" >> $GITHUB_ENV
+          else
+            echo "HAS_KEYSTORE=false" >> $GITHUB_ENV
           fi
 
       - name: Write Mapbox tokens to gradle.properties
@@ -39,9 +42,7 @@ jobs:
           echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
           echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"       >> ~/.gradle/gradle.properties
 
-      # Install the exact Gradle version declared in gradle-wrapper.properties,
-      # then use it to regenerate gradle-wrapper.jar via 'gradle wrapper'.
-      # This is more reliable than extracting the jar from the distribution zip.
+      # Install Gradle and regenerate gradle-wrapper.jar using 'gradle wrapper'.
       - name: Generate gradle-wrapper.jar
         run: |
           GRADLE_VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
@@ -52,9 +53,7 @@ jobs:
           unzip -q /tmp/gradle.zip -d /tmp/gradle-install
           GRADLE_BIN="/tmp/gradle-install/gradle-${GRADLE_VERSION}/bin/gradle"
           chmod +x "$GRADLE_BIN"
-          echo "Running: gradle wrapper --gradle-version $GRADLE_VERSION"
-          "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" \
-            --distribution-type bin
+          "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" --distribution-type bin
           echo "gradle-wrapper.jar: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
 
       - name: Extract version name
@@ -68,6 +67,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # ── Debug APK — every push ──────────────────────────────────────────────
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
         env:
@@ -81,8 +81,8 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
+      # ── Release APK + AAB — every push (signed with keystore if available) ──
       - name: Build release APK and AAB
-        if: github.ref_type == 'tag'
         run: ./gradlew assembleRelease bundleRelease --stacktrace
         env:
           MAPBOX_ACCESS_TOKEN:    ${{ secrets.MAPBOX_ACCESS_TOKEN }}
@@ -93,7 +93,6 @@ jobs:
           STORE_PASSWORD:         ${{ secrets.STORE_PASSWORD }}
 
       - name: Upload release APK
-        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: ShimmerENACT-${{ steps.version.outputs.name }}-release
@@ -101,13 +100,13 @@ jobs:
           retention-days: 90
 
       - name: Upload AAB
-        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: ShimmerENACT-${{ steps.version.outputs.name }}-bundle
           path: app/build/outputs/bundle/release/*.aab
           retention-days: 90
 
+      # ── GitHub Release — tags only ──────────────────────────────────────────
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
