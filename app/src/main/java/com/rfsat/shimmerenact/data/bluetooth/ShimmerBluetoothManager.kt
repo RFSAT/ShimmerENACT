@@ -199,39 +199,52 @@ class ShimmerBluetoothManager(private val context: Context) {
     private suspend fun runInquiry(config: SensorConfig) = withContext(Dispatchers.IO) {
         sendCommand(byteArrayOf(ShimmerProtocol.CMD_INQUIRY))
 
-        // The Shimmer sends ACK (0xFF) before the inquiry response (starts with 0x02).
-        // Read bytes until we collect a meaningful response or timeout.
+        // Shimmer3 inquiry response format:
+        //   [0xFF ACK] [0x02 RESPONSE_MARKER] [num_ch] [buf_size] [sr_lo] [sr_hi]
+        //   [bitmap0] [bitmap1] [bitmap2] [ch1_id] [ch2_id] ...
+        //
+        // The ACK (0xFF) and response may arrive in the same read() or separately.
+        // We scan byte-by-byte for the 0x02 marker then collect 8 more bytes.
         val inStream = inputStream
-        val response = if (inStream != null) {
+        val inquiryBytes = if (inStream != null) {
             withTimeoutOrNull(ShimmerProtocol.RESPONSE_TIMEOUT_MS) {
-                val buf = mutableListOf<Byte>()
-                var collecting = false
-                // Scan up to 128 bytes for the 0x02 inquiry-response marker
-                for (i in 0 until 128) {
+                val collected = mutableListOf<Byte>()
+                var foundMarker = false
+                // Read up to 64 bytes looking for the 0x02 inquiry-response marker
+                repeat(64) scan@{
+                    if (foundMarker && collected.size >= 9) return@scan
                     val b = inStream.read()
-                    if (b == -1) break
-                    val byte = b.toByte()
-                    if (!collecting && byte == 0x02.toByte()) collecting = true
-                    if (collecting) {
-                        buf.add(byte)
-                        if (buf.size >= 9) break  // enough for full inquiry response
+                    if (b == -1) return@withTimeoutOrNull null
+                    if (!foundMarker) {
+                        if (b == 0x02) { foundMarker = true; collected.add(b.toByte()) }
+                        // else: skip ACK (0xFF) or any other leading byte
+                    } else {
+                        collected.add(b.toByte())
                     }
                 }
-                if (buf.size >= 5) buf.toByteArray() else null
+                if (collected.size >= 9) collected.toByteArray() else null
             }
         } else null
 
-        if (response != null && response.size >= 5) {
-            // Format: [0x02][num_chans][buf_size][sr_lo][sr_hi][bitmap0][bitmap1][bitmap2?]
-            sensorBitmap[0] = response.getOrElse(5) { 0 }.toInt() and 0xFF
-            sensorBitmap[1] = response.getOrElse(6) { 0 }.toInt() and 0xFF
-            sensorBitmap[2] = response.getOrElse(7) { 0 }.toInt() and 0xFF
+        if (inquiryBytes != null && inquiryBytes.size >= 9) {
+            // inquiryBytes[0] = 0x02 marker
+            // inquiryBytes[1] = num_channels
+            // inquiryBytes[2] = buf_size
+            // inquiryBytes[3] = sr_lo
+            // inquiryBytes[4] = sr_hi
+            // inquiryBytes[5] = bitmap byte 0  ← enabled sensors
+            // inquiryBytes[6] = bitmap byte 1
+            // inquiryBytes[7] = bitmap byte 2
+            sensorBitmap[0] = inquiryBytes[5].toInt() and 0xFF
+            sensorBitmap[1] = inquiryBytes[6].toInt() and 0xFF
+            sensorBitmap[2] = inquiryBytes[7].toInt() and 0xFF
             AppLog.ok("BT", "Inquiry OK — sensor bitmap: " +
                 "0x%02X 0x%02X 0x%02X".format(sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))
-            AppLog.d("BT", "Raw inquiry response (${response.size} bytes): " +
-                response.take(12).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
+            AppLog.d("BT", "Raw (${inquiryBytes.size} bytes): " +
+                inquiryBytes.take(12).joinToString(" ") { "0x%02X".format(it.toInt() and 0xFF) })
         } else {
-            AppLog.w("BT", "Inquiry timed out — using default bitmap for ${config.sensorType.name}")
+            AppLog.w("BT", "Inquiry failed (${inquiryBytes?.size ?: 0} bytes) — " +
+                "using default bitmap for ${config.sensorType.name}")
             sensorBitmap = defaultBitmapForType(config.sensorType)
             AppLog.d("BT", "Default bitmap: " +
                 "0x%02X 0x%02X 0x%02X".format(sensorBitmap[0], sensorBitmap[1], sensorBitmap[2]))

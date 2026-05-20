@@ -22,6 +22,3 @@ keystore.properties
 # Android Studio
 .idea/
 *.iml
-
-# gradle-wrapper.jar is downloaded fresh in CI (see workflow)
-gradle/wrapper/gradle-wrapper.jar

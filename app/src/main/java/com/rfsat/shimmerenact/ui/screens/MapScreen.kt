@@ -22,6 +22,7 @@ import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.LineString
 import com.mapbox.geojson.Point
 import com.mapbox.maps.*
+import com.mapbox.maps.MapboxOptions
 import com.mapbox.maps.extension.style.layers.addLayer
 import com.mapbox.maps.extension.style.layers.generated.circleLayer
 import com.mapbox.maps.extension.style.layers.generated.lineLayer
@@ -56,23 +57,22 @@ fun MapScreen(viewModel: ShimmerViewModel) {
             ?.let { loadGpsFromCsv(it) } ?: emptyList()
     }
 
-    // Read Mapbox token — try manifest meta-data keys used by different SDK versions
+    // Read Mapbox token from manifest meta-data.
+    // Mapbox SDK 11 reads "com.mapbox.maps.AccessToken"; older SDKs use "com.mapbox.token".
+    // The token is injected at build time via manifestPlaceholders in build.gradle.
+    // If it reads as "YOUR_MAPBOX_TOKEN_HERE" the secret/property was not set.
     val mapboxToken = remember {
         try {
             val ai = context.packageManager.getApplicationInfo(
                 context.packageName, PackageManager.GET_META_DATA
             )
             val meta = ai.metaData
-            // Mapbox SDK 11 uses "com.mapbox.maps.AccessToken"
-            // Older SDKs used "com.mapbox.token"
             meta?.getString("com.mapbox.maps.AccessToken")
                 ?: meta?.getString("com.mapbox.token")
                 ?: ""
         } catch (_: Exception) { "" }
     }
 
-    // Token is valid if it's a real public token (starts with pk.)
-    // "YOUR_MAPBOX_TOKEN_HERE" or empty string means not configured
     val tokenValid = mapboxToken.startsWith("pk.")
 
     var mapView    by remember { mutableStateOf<MapView?>(null) }
@@ -131,8 +131,7 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                     Text("Mapbox Token Required",
                         color = EnactOnSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Set MAPBOX_ACCESS_TOKEN in local.properties (run extract_mapbox_token.py) " +
-                        "and in GitHub Actions secrets, then rebuild the app.",
+                        "Run extract_mapbox_token.py with sensor_placement.html to configure the map, then rebuild the app.",
                         color = EnactOnSurface.copy(alpha = 0.7f),
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -145,6 +144,9 @@ fun MapScreen(viewModel: ShimmerViewModel) {
         // ── Mapbox map ─────────────────────────────────────────────────────
         AndroidView(
             factory = { ctx ->
+                // Set the token programmatically before MapView init to avoid crash
+                // when the manifest placeholder was not substituted at build time.
+                try { MapboxOptions.accessToken = mapboxToken } catch (_: Throwable) {}
                 MapView(ctx).also { mv ->
                     mapView = mv
                     mv.mapboxMap.loadStyle(Style.MAPBOX_STREETS) { style ->
