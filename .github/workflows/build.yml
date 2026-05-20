@@ -33,6 +33,14 @@ jobs:
             echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
           fi
 
+      # Write Mapbox tokens into gradle.properties so settings.gradle can read them
+      # via providers.gradleProperty() during dependency resolution.
+      - name: Write Mapbox tokens to gradle.properties
+        run: |
+          mkdir -p ~/.gradle
+          echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
+          echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"     >> ~/.gradle/gradle.properties
+
       - name: Extract version name
         id: version
         run: |
