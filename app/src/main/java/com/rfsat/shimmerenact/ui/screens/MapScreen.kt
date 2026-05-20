@@ -227,9 +227,15 @@ fun MapScreen(viewModel: ShimmerViewModel) {
                         .map { Point.fromLngLat(it.lon, it.lat) }
                     if (allPts.size < 2) return@SmallFloatingActionButton
                     followMode = false
-                    // Build bounding box manually — CoordinateBounds.hull() takes
-                    // vararg Point, not List<Point>; spread operator resolves this.
-                    val bounds = CoordinateBounds.hull(*allPts.toTypedArray())
+                    // CoordinateBounds.hull() is a Java vararg static method —
+                    // Kotlin's spread operator cannot be used on it (KT-48162).
+                    // Build the bounding box manually from min/max lat/lon instead.
+                    val lats = allPts.map { it.latitude() }
+                    val lons = allPts.map { it.longitude() }
+                    val bounds = CoordinateBounds(
+                        Point.fromLngLat(lons.min(), lats.min()),  // SW
+                        Point.fromLngLat(lons.max(), lats.max())   // NE
+                    )
                     mv.mapboxMap.setCamera(
                         mv.mapboxMap.cameraForCoordinateBounds(
                             bounds,
