@@ -48,9 +48,17 @@ fun ConnectScreen(
     var showManualEntry by remember { mutableStateOf(false) }
     var btRadioIdInput by remember { mutableStateOf(activeConfig.btRadioId) }
 
-    // BT permissions
+    // BT + location permissions.
+    // On API 31+: BLUETOOTH_CONNECT + BLUETOOTH_SCAN are required for BT Classic,
+    //             and ACCESS_FINE_LOCATION is requested here so GPS is available
+    //             immediately when recording starts (avoids a mid-session dialog).
+    // On API ≤30: legacy BLUETOOTH + ACCESS_FINE_LOCATION (was already required for scan).
     val btPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+        listOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
     } else {
         listOf(Manifest.permission.BLUETOOTH, Manifest.permission.ACCESS_FINE_LOCATION)
     }
@@ -406,10 +414,10 @@ fun PermissionBanner(onRequest: () -> Unit) {
         border = BorderStroke(1.dp, EnactWarning.copy(alpha = 0.5f))
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text("Bluetooth permissions required", fontWeight = FontWeight.SemiBold,
+            Text("Bluetooth & location permissions required", fontWeight = FontWeight.SemiBold,
                 color = EnactWarning, fontSize = 14.sp)
             Spacer(Modifier.height(4.dp))
-            Text("This app needs Bluetooth permissions to discover and connect to Shimmer3 sensors.",
+            Text("Bluetooth permissions are needed to connect to Shimmer3. Location permission is needed to tag recorded data with GPS coordinates.",
                 fontSize = 12.sp, color = EnactOnSurface.copy(alpha = 0.7f))
             Spacer(Modifier.height(10.dp))
             Button(

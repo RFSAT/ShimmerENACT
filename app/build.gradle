@@ -14,8 +14,8 @@ android {
         applicationId "com.ShimmerENACT"
         minSdk 26
         targetSdk 35
-        versionCode 51
-        versionName "1.7.6"
+        versionCode 52
+        versionName "1.8.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -132,6 +132,7 @@ dependencies {
     implementation 'com.opencsv:opencsv:5.8'
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
     implementation 'com.google.accompanist:accompanist-permissions:0.33.2-alpha'
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
     implementation 'androidx.core:core-splashscreen:1.0.1'
 
     testImplementation 'junit:junit:4.13.2'

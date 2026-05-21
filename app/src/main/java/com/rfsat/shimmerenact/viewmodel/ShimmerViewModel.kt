@@ -10,6 +10,7 @@ import com.rfsat.shimmerenact.data.models.*
 import com.rfsat.shimmerenact.data.repository.AppLog
 import com.rfsat.shimmerenact.data.repository.PreferencesRepository
 import com.rfsat.shimmerenact.data.repository.RecordingFile
+import com.rfsat.shimmerenact.data.repository.LocationRepository
 import com.rfsat.shimmerenact.data.repository.RecordingRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -21,6 +22,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     val btManager = ShimmerBluetoothManager(context)
     val prefsRepo = PreferencesRepository(context)
     val recordingRepo = RecordingRepository(context)
+    val locationRepo = LocationRepository(context)
 
     // ─── Sensor configurations ────────────────────────────────────────────────
     private val _gsrConfig = MutableStateFlow(
@@ -191,7 +193,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
                 // Write to per-signal CSV files if recording
                 if (recordingRepo.isRecording) {
-                    recordingRepo.writeSampleSync(sample)
+                    recordingRepo.writeSampleSync(sample, locationRepo.location.value)
                     _recordingState.update { rs ->
                         rs.copy(
                             sampleCount = rs.sampleCount + 1,
@@ -317,6 +319,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             )
             result.onSuccess { paths ->
                 AppLog.ok("REC", "Recording started — ${paths.size} files")
+                locationRepo.startUpdates()
                 _recordingState.value = RecordingState(
                     isRecording = true,
                     startTimeMs = System.currentTimeMillis(),
@@ -342,6 +345,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 AppLog.e("REC", "stopRecording crashed: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
+                locationRepo.stopUpdates()
                 _recordingState.value = RecordingState()
                 try { loadSessions() } catch (e: Exception) {
                     AppLog.e("REC", "loadSessions failed: ${e.message}")
@@ -402,5 +406,6 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     override fun onCleared() {
         super.onCleared()
         btManager.cleanup()
+        locationRepo.cleanup()
     }
 }

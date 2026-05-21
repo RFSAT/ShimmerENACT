@@ -2,6 +2,30 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.8.0
+
+### Added
+- **GPS location tagging in recordings**: every CSV row now includes four additional
+  columns — `latitude_deg`, `longitude_deg`, `altitude_m`, `location_accuracy_m` —
+  populated from the Android Fused Location Provider at 1 Hz (fastest 4 Hz) with
+  `PRIORITY_HIGH_ACCURACY`
+  - Columns are present in the header of all new recordings; cells are empty (`,,,,`)
+    for any row where no GPS fix is available (permission denied or fix not yet acquired)
+  - `LocationRepository` seeds itself from the last known position immediately on
+    `startUpdates()` so the very first data row typically has coordinates
+  - Location updates start when recording begins and stop when it ends, conserving
+    battery between sessions
+- **New file**: `data/repository/LocationRepository.kt` — thin wrapper around
+  `FusedLocationProviderClient`; exposes `StateFlow<Location?>` for use across the app
+
+### Changed
+- `play-services-location:21.3.0` added as a dependency
+- `ACCESS_FINE_LOCATION` manifest declaration: `maxSdkVersion="30"` cap removed so
+  GPS permission is available on all API levels (was silently missing on API 31+)
+- `ConnectScreen`: `ACCESS_FINE_LOCATION` added to the API 31+ permission request
+  list alongside `BLUETOOTH_CONNECT` and `BLUETOOTH_SCAN`; permission banner text
+  updated to mention location tagging
+
 ## v1.7.6
 
 ### Changed
