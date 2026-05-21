@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Bluetooth Classic permissions -->
     <uses-permission android:name="android.permission.BLUETOOTH"
@@ -16,11 +17,24 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="30" />
 
-    <!-- Storage -->
+    <!-- Storage: write access up to API 28 (scoped storage on 29+) -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!--
+        READ_EXTERNAL_STORAGE: grants read access to all of external storage on API 29–32.
+        Deprecated on API 33+ but still honoured there if declared without maxSdkVersion.
+        Required so the Files screen can read recording sessions written by previous
+        installs (different applicationId) or by earlier versions of the app.
+    -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!--
+        MANAGE_EXTERNAL_STORAGE: allows unrestricted access to external storage on API 30+.
+        Used as a fallback on API 33+ where READ_EXTERNAL_STORAGE no longer covers
+        non-media files in public directories such as Downloads.
+        The user is directed to the system Settings page to grant this if needed.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Vibrate for alerts -->
     <uses-permission android:name="android.permission.VIBRATE" />

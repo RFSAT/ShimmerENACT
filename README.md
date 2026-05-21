@@ -77,7 +77,7 @@ Every push to `main` or `develop` automatically builds both a debug and release 
 ### Create a versioned release
 
 ```bash
-git tag v1.7.5
+git tag v1.7.6
 git push origin v1.7.5
 ```
 

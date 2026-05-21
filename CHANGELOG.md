@@ -2,6 +2,29 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.6
+
+### Changed
+- `compileSdk` and `targetSdk` raised to **35** (Android 15) — required by
+  Google Play Store for new app submissions; `buildToolsVersion` updated to
+  `35.0.0` accordingly
+
+### Fixed
+- Recordings screen: storage permission is now requested at runtime before the
+  session list is loaded
+  - On API 26–32: `READ_EXTERNAL_STORAGE` runtime permission is requested via the
+    standard system dialog; sessions from previous installs become readable once
+    the permission is granted
+  - On API 33+: `READ_EXTERNAL_STORAGE` is no longer effective for non-media files
+    in `Downloads`; the screen detects this and offers a button that opens the
+    system **All files access** settings page for the app
+  - `READ_EXTERNAL_STORAGE` declaration in `AndroidManifest.xml` extended to all
+    API levels (previously capped at `maxSdkVersion="32"`) and
+    `MANAGE_EXTERNAL_STORAGE` added (with `tools:ignore="ScopedStorage"`) to
+    support the API 30+ all-files-access grant
+  - Session list refreshes automatically once the permission is granted (driven by
+    `LaunchedEffect(hasStorageAccess)`)
+
 ## v1.7.5
 
 ### Fixed
