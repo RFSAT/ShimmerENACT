@@ -39,6 +39,9 @@ fun RecordingsScreen(
     val context = LocalContext.current
     val dateFmt = remember { SimpleDateFormat("dd MMM yyyy  HH:mm:ss", Locale.US) }
 
+    // Refresh the list every time this screen is entered
+    LaunchedEffect(Unit) { viewModel.refreshSessions() }
+
     var deleteTarget by remember { mutableStateOf<RecordingSession?>(null) }
 
     Scaffold(

@@ -2,7 +2,6 @@ package com.rfsat.shimmerenact.ui.screens
 
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,17 +9,14 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
@@ -47,44 +43,63 @@ fun RecordingViewerScreen(
     var selectedPoint by remember { mutableStateOf<CsvPoint?>(null) }
     var selectedIndex by remember { mutableStateOf(-1) }
 
-    val isoFmt = remember { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("UTC")
-    } }
+    val isoFmt = remember {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+    }
     val timeFmt = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.US) }
 
+    // Load CSV data
     LaunchedEffect(recordingFile.path) {
         isLoading = true
         loadError = null
+        selectedPoint = null
+        selectedIndex = -1
         try {
             val loaded = withContext(Dispatchers.IO) {
                 val file = File(recordingFile.path)
-                if (!file.exists()) throw Exception("File not found: ${recordingFile.path}")
+                if (!file.exists()) throw Exception("File not found:\n${recordingFile.path}")
                 val result = mutableListOf<CsvPoint>()
                 var headerParsed = false
-                var tsCol = 0
-                var valCol = 2
-                file.forEachLine { line ->
-                    if (line.startsWith("#") || line.isBlank()) return@forEachLine
-                    if (!headerParsed) {
-                        // Detect column indices from header row
-                        val cols = line.split(",")
-                        tsCol = cols.indexOfFirst { it.startsWith("timestamp_ms") }
-                            .takeIf { it >= 0 } ?: 1
-                        valCol = if (cols.size > 2) 2 else 1
-                        headerParsed = true
-                        return@forEachLine
-                    }
-                    val cols = line.split(",")
-                    if (cols.size <= valCol) return@forEachLine
-                    val tsMs = cols.getOrNull(tsCol)?.trim()?.toLongOrNull()
-                        ?: run {
-                            // Try parsing ISO timestamp in col 0
-                            cols.getOrNull(0)?.trim()?.let { iso ->
+                var tsCol = 1      // default: col 1 = timestamp_ms
+                var valCol = 2     // default: col 2 = signal value
+
+                file.useLines { seq ->
+                    for (line in seq) {
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith("#") || trimmed.isEmpty()) continue
+                        if (!headerParsed) {
+                            // Parse the column header row
+                            val cols = trimmed.split(",")
+                            val tsMsIdx = cols.indexOfFirst { it.trim().startsWith("timestamp_ms") }
+                            val isoIdx  = cols.indexOfFirst { it.trim().startsWith("timestamp_iso") }
+                            // Value column: first column that is not a timestamp column
+                            val vIdx = cols.indices.firstOrNull { i ->
+                                i != tsMsIdx && i != isoIdx
+                            } ?: cols.lastIndex
+                            tsCol = if (tsMsIdx >= 0) tsMsIdx else -1
+                            valCol = vIdx
+                            headerParsed = true
+                            continue
+                        }
+                        // Skip comment lines that may appear as footer (# Session end …)
+                        if (trimmed.startsWith("#")) continue
+                        val cols = trimmed.split(",")
+                        if (cols.size <= valCol) continue
+
+                        // Resolve timestamp in ms
+                        val tsMs: Long = if (tsCol >= 0) {
+                            cols.getOrNull(tsCol)?.trim()?.toLongOrNull()
+                        } else null
+                            ?: cols.getOrNull(0)?.trim()?.let { iso ->
                                 runCatching { isoFmt.parse(iso)?.time }.getOrNull()
                             }
-                        } ?: return@forEachLine
-                    val v = cols.getOrNull(valCol)?.trim()?.toDoubleOrNull() ?: return@forEachLine
-                    result.add(CsvPoint(tsMs, v))
+                            ?: continue
+
+                        val v = cols.getOrNull(valCol)?.trim()?.toDoubleOrNull() ?: continue
+                        result.add(CsvPoint(tsMs, v))
+                    }
                 }
                 result
             }
@@ -96,16 +111,18 @@ fun RecordingViewerScreen(
         }
     }
 
-    // Derived stats
+    // Stats derived from loaded points
     val stats = remember(points) {
         if (points.isEmpty()) null else {
             val values = points.map { it.value }
-            val min = values.min()
-            val max = values.max()
-            val mean = values.average()
-            Triple(min, max, mean)
+            Triple(values.min(), values.average(), values.max())
         }
     }
+
+    // Colours computed once (stable across recompositions)
+    val accentArgb       = EnactGreen.toArgb()
+    val onSurfaceDimArgb = EnactOnSurfaceDim.toArgb()
+    val bgArgb           = EnactDark.toArgb()
 
     Scaffold(
         topBar = {
@@ -118,8 +135,10 @@ fun RecordingViewerScreen(
                         )
                         Text(
                             buildString {
-                                if (recordingFile.signalUnit.isNotBlank()) append("[${recordingFile.signalUnit}]  •  ")
-                                if (recordingFile.rateHz > 0) append("${recordingFile.rateHz} Hz  •  ")
+                                if (recordingFile.signalUnit.isNotBlank())
+                                    append("[${recordingFile.signalUnit}]  •  ")
+                                if (recordingFile.rateHz > 0)
+                                    append("${recordingFile.rateHz} Hz  •  ")
                                 append("${points.size} pts")
                             },
                             fontSize = 11.sp, color = EnactOnSurfaceDim
@@ -142,8 +161,8 @@ fun RecordingViewerScreen(
                 .padding(padding)
                 .fillMaxSize()
         ) {
-
             when {
+                // ── Loading ───────────────────────────────────────────────────
                 isLoading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -154,36 +173,51 @@ fun RecordingViewerScreen(
                     }
                 }
 
+                // ── Error ─────────────────────────────────────────────────────
                 loadError != null -> {
-                    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.ErrorOutline, null,
-                                tint = EnactError, modifier = Modifier.size(48.dp))
+                            Icon(
+                                Icons.Default.ErrorOutline, null,
+                                tint = EnactError, modifier = Modifier.size(48.dp)
+                            )
                             Spacer(Modifier.height(12.dp))
-                            Text("Failed to load recording", color = EnactError,
-                                fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Failed to load recording",
+                                color = EnactError, fontWeight = FontWeight.SemiBold
+                            )
                             Spacer(Modifier.height(4.dp))
-                            Text(loadError ?: "", color = EnactOnSurfaceDim,
-                                fontSize = 12.sp)
+                            Text(
+                                loadError ?: "", color = EnactOnSurfaceDim, fontSize = 12.sp
+                            )
                         }
                     }
                 }
 
+                // ── No data ───────────────────────────────────────────────────
                 points.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.BarChart, null,
+                            Icon(
+                                Icons.Default.BarChart, null,
                                 tint = EnactGreen.copy(alpha = 0.3f),
-                                modifier = Modifier.size(56.dp))
+                                modifier = Modifier.size(56.dp)
+                            )
                             Spacer(Modifier.height(12.dp))
                             Text("No data in file", color = EnactOnSurfaceDim)
                         }
                     }
                 }
 
+                // ── Chart ─────────────────────────────────────────────────────
                 else -> {
-                    // ── Stats row ──────────────────────────────────────────────
-                    stats?.let { (min, max, mean) ->
+                    // Stats strip
+                    stats?.let { (min, mean, max) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -191,66 +225,71 @@ fun RecordingViewerScreen(
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            StatChip("MIN", "%.3f".format(min), EnactGreen)
-                            StatChip("MEAN", "%.3f".format(mean), EnactLime)
-                            StatChip("MAX", "%.3f".format(max), EnactError)
-                            StatChip("SAMPLES", "${points.size}", EnactOnSurfaceDim)
+                            StatChip("MIN",     "%.4f".format(min),  EnactGreen)
+                            StatChip("MEAN",    "%.4f".format(mean), EnactLime)
+                            StatChip("MAX",     "%.4f".format(max),  EnactError)
+                            StatChip("SAMPLES", "${points.size}",     EnactOnSurfaceDim)
                         }
                     }
 
-                    // ── Selected value readout ─────────────────────────────────
-                    selectedPoint?.let { pt ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(EnactGreen.copy(alpha = 0.08f))
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.MyLocation, null,
-                                tint = EnactGreen, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "t = ${timeFmt.format(Date(pt.timestampMs))}",
-                                fontSize = 12.sp, color = EnactOnSurface,
-                                modifier = Modifier.weight(1f)
+                    // Cursor readout (fixed height so chart doesn't jump)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (selectedPoint != null)
+                                    EnactGreen.copy(alpha = 0.08f) else EnactDark
                             )
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        if (selectedPoint != null) {
+                            val pt = selectedPoint!!
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.MyLocation, null,
+                                    tint = EnactGreen, modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "t = ${timeFmt.format(Date(pt.timestampMs))}",
+                                    fontSize = 12.sp, color = EnactOnSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "%.6f".format(pt.value) +
+                                        if (recordingFile.signalUnit.isNotBlank())
+                                            "  ${recordingFile.signalUnit}" else "",
+                                    fontSize = 13.sp, color = EnactGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "#${selectedIndex + 1}",
+                                    fontSize = 11.sp, color = EnactOnSurfaceDim
+                                )
+                            }
+                        } else {
                             Text(
-                                "%.4f ${recordingFile.signalUnit}".trim(),
-                                fontSize = 13.sp, color = EnactGreen,
-                                fontWeight = FontWeight.Bold
+                                "Tap graph to trace value",
+                                fontSize = 12.sp,
+                                color = EnactOnSurfaceDim.copy(alpha = 0.4f)
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "#${selectedIndex + 1}",
-                                fontSize = 11.sp, color = EnactOnSurfaceDim
-                            )
-                        }
-                    } ?: run {
-                        // Placeholder row to keep layout stable
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(EnactDark)
-                                .padding(horizontal = 16.dp, vertical = 6.dp)
-                        ) {
-                            Text("Tap graph to trace value",
-                                fontSize = 12.sp, color = EnactOnSurfaceDim.copy(alpha = 0.5f))
                         }
                     }
 
-                    // ── Chart ──────────────────────────────────────────────────
-                    val chartColor = Color(0xFF43AF81)  // EnactGreen
-                    val accentArgb = EnactGreen.toArgb()
-                    val surfaceArgb = EnactSurface.toArgb()
-                    val onSurfaceArgb = EnactOnSurface.toArgb()
-                    val onSurfaceDimArgb = EnactOnSurfaceDim.toArgb()
-                    val bgArgb = EnactDark.toArgb()
+                    // Build chart entries once per data load, not on every recompose
+                    val entries = remember(points) {
+                        val t0 = points.first().timestampMs
+                        points.mapIndexed { i, pt ->
+                            Entry((pt.timestampMs - t0) / 1000f, pt.value.toFloat(), i)
+                        }
+                    }
 
+                    // MPAndroidChart — factory creates the view once, update applies data
                     AndroidView(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(8.dp),
+                            .padding(bottom = 4.dp, start = 4.dp, end = 4.dp),
                         factory = { ctx ->
                             LineChart(ctx).apply {
                                 description.isEnabled = false
@@ -261,10 +300,11 @@ fun RecordingViewerScreen(
                                 setTouchEnabled(true)
                                 isDragEnabled = true
                                 isScaleXEnabled = true
-                                isScaleYEnabled = false
-                                setPinchZoom(true)
+                                isScaleYEnabled = true
+                                setPinchZoom(false)   // separate X/Y zoom
                                 setDrawMarkers(false)
-                                isHighlightPerDragEnabled = true
+                                isHighlightPerDragEnabled = false
+                                setNoDataText("No data")
 
                                 xAxis.apply {
                                     position = XAxis.XAxisPosition.BOTTOM
@@ -272,11 +312,16 @@ fun RecordingViewerScreen(
                                     gridColor = AndroidColor.argb(40, 255, 255, 255)
                                     textColor = onSurfaceDimArgb
                                     textSize = 9f
-                                    labelCount = 5
-                                    granularity = 1f
+                                    labelCount = 6
+                                    granularity = 0.001f   // min interval in axis units (seconds)
+                                    isGranularityEnabled = true
                                     setAvoidFirstLastClipping(true)
+                                    valueFormatter = object : ValueFormatter() {
+                                        override fun getFormattedValue(v: Float): String =
+                                            if (v < 60f) "%.1fs".format(v)
+                                            else "%.0fm%.0fs".format(v / 60, v % 60)
+                                    }
                                 }
-
                                 axisLeft.apply {
                                     setDrawGridLines(true)
                                     gridColor = AndroidColor.argb(30, 255, 255, 255)
@@ -285,63 +330,52 @@ fun RecordingViewerScreen(
                                     setDrawAxisLine(false)
                                 }
                                 axisRight.isEnabled = false
-
-                                setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
-                                    override fun onValueSelected(e: Entry?, h: Highlight?) {}
-                                    override fun onNothingSelected() {}
-                                })
                             }
                         },
                         update = { chart ->
-                            if (points.isEmpty()) {
-                                chart.data = null
-                                chart.invalidate()
-                                return@AndroidView
-                            }
-
-                            val t0 = points.first().timestampMs.toFloat()
-                            val entries = points.mapIndexed { i, pt ->
-                                Entry((pt.timestampMs - t0) / 1000f, pt.value.toFloat(), i)
-                            }
-
+                            // Build dataset
+                            val drawCircles = entries.size < 300
                             val dataset = LineDataSet(entries, "").apply {
                                 color = accentArgb
-                                lineWidth = 1.5f
-                                setDrawCircles(points.size < 500)
+                                lineWidth = if (entries.size > 2000) 1f else 1.5f
+                                setDrawCircles(drawCircles)
                                 setCircleColor(accentArgb)
-                                circleRadius = 2.5f
+                                circleRadius = 2f
                                 setDrawValues(false)
-                                mode = if (points.size > 1000)
-                                    LineDataSet.Mode.LINEAR else LineDataSet.Mode.CUBIC_BEZIER
+                                mode = LineDataSet.Mode.LINEAR
                                 setDrawFilled(true)
                                 fillColor = accentArgb
-                                fillAlpha = 25
+                                fillAlpha = 20
                                 highLightColor = AndroidColor.WHITE
-                                highlightLineWidth = 1f
+                                highlightLineWidth = 1.5f
                                 isHighlightEnabled = true
                             }
 
-                            // X axis label: seconds from start
-                            chart.xAxis.valueFormatter = object : ValueFormatter() {
-                                override fun getFormattedValue(value: Float): String =
-                                    "%.1fs".format(value)
-                            }
-
                             chart.data = LineData(dataset)
-                            chart.setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
-                                override fun onValueSelected(e: Entry?, h: Highlight?) {
-                                    e ?: return
-                                    val idx = (e.data as? Int) ?: return
-                                    if (idx in points.indices) {
-                                        selectedPoint = points[idx]
-                                        selectedIndex = idx
+                            chart.data.notifyDataChanged()
+                            chart.notifyDataSetChanged()
+
+                            // Fit full time range on screen — key fix for single-line appearance
+                            chart.fitScreen()
+                            chart.setVisibleXRangeMaximum(Float.MAX_VALUE)
+
+                            // Register value-selection listener once data is set
+                            chart.setOnChartValueSelectedListener(
+                                object : OnChartValueSelectedListener {
+                                    override fun onValueSelected(e: Entry?, h: Highlight?) {
+                                        e ?: return
+                                        val idx = e.data as? Int ?: return
+                                        if (idx in points.indices) {
+                                            selectedPoint = points[idx]
+                                            selectedIndex = idx
+                                        }
+                                    }
+                                    override fun onNothingSelected() {
+                                        selectedPoint = null
+                                        selectedIndex = -1
                                     }
                                 }
-                                override fun onNothingSelected() {
-                                    selectedPoint = null
-                                    selectedIndex = -1
-                                }
-                            })
+                            )
                             chart.invalidate()
                         }
                     )
@@ -354,8 +388,10 @@ fun RecordingViewerScreen(
 @Composable
 private fun StatChip(label: String, value: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 9.sp, color = color.copy(alpha = 0.7f),
-            letterSpacing = 0.8.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            label, fontSize = 9.sp, color = color.copy(alpha = 0.7f),
+            letterSpacing = 0.8.sp, fontWeight = FontWeight.SemiBold
+        )
         Text(value, fontSize = 12.sp, color = color, fontWeight = FontWeight.Medium)
     }
 }

@@ -227,6 +227,9 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Reload the sessions list — call when the Recordings screen becomes visible. */
+    fun refreshSessions() = loadSessions()
+
     // ─── Public actions ───────────────────────────────────────────────────────
 
     fun selectSensorType(type: SensorType) {

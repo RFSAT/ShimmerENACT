@@ -2,6 +2,23 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.1
+
+### Fixed
+- Recordings list: sessions now refresh every time the Files tab is opened, so
+  sessions recorded in the current app launch appear without restarting the app
+- Recordings list: `listSessions()` no longer silently drops sessions when any
+  individual file fails to parse; each failure is logged and the rest of the session
+  is still shown; permission errors are logged explicitly
+- Graph viewer: chart now scales the time axis to fit all data on first display
+  (`fitScreen()` + `notifyDataSetChanged()` called after setting data); previously
+  MPAndroidChart rendered at its default zoom, compressing all points into one line
+- Graph viewer: CSV column detection rewritten — finds `timestamp_ms` and value
+  columns by name rather than assuming fixed positions; handles footer comment lines
+  (e.g. `# Session end:`) without treating them as data rows
+- Graph viewer: chart entries are built once per data load inside `remember(points)`
+  rather than on every recomposition; prevents redundant LineDataSet rebuilds
+
 ## v1.7.0
 
 ### Fixed

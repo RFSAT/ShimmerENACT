@@ -198,63 +198,92 @@ class RecordingRepository(private val context: Context) {
 
     // ─── List sessions ────────────────────────────────────────────────────────
     suspend fun listSessions(): List<RecordingSession> = withContext(Dispatchers.IO) {
-        val root = try { getRootDir() } catch (_: Exception) { return@withContext emptyList() }
-        // Also scan bare CSV files dropped directly into root (pre-v1.1 format)
-        val sessionDirs = mutableListOf<File>()
-        val legacyFiles = mutableListOf<File>()
-        root.listFiles()?.forEach { f ->
-            when {
-                f.isDirectory -> sessionDirs.add(f)
-                f.isFile && f.extension == "csv" -> legacyFiles.add(f)
-            }
+        val root = try {
+            getRootDir()
+        } catch (e: Exception) {
+            AppLog.e("REC", "listSessions: cannot get root dir: ${e.message}")
+            return@withContext emptyList()
         }
+
+        AppLog.d("REC", "Scanning: ${root.absolutePath}")
+
+        val allEntries = root.listFiles()
+        if (allEntries == null) {
+            AppLog.w("REC", "listSessions: listFiles() returned null (no permission?)")
+            return@withContext emptyList()
+        }
+
+        val sessionDirs  = allEntries.filter { it.isDirectory }
+        val legacyFiles  = allEntries.filter { it.isFile && it.extension == "csv" }
+
+        AppLog.d("REC", "Found ${sessionDirs.size} dir(s), ${legacyFiles.size} root CSV(s)")
+
         val results = mutableListOf<RecordingSession>()
 
-        // ── Session directories (v1.1+) ───────────────────────────────────────
-        // Dir name format: {safeName}_{yyyy-MM-dd_HH-mm-ss}
-        // The timestamp is always the rightmost 19 characters.
-        sessionDirs.sortedByDescending { it.lastModified() }.forEach { dir ->
+        // ── Session sub-directories (v1.1+) ───────────────────────────────────
+        // Directory name format written by startRecording():
+        //   {safeName}_{yyyy-MM-dd_HH-mm-ss}
+        // The timestamp portion is exactly 19 characters and always at the end.
+        for (dir in sessionDirs.sortedByDescending { it.lastModified() }) {
             try {
-                val csvFiles = dir.listFiles { f -> f.extension == "csv" }
-                    ?.sortedBy { it.name }
-                    ?.mapNotNull { f -> parseRecordingFile(f, dir.name) } ?: emptyList()
-                if (csvFiles.isNotEmpty() || dir.listFiles()?.isNotEmpty() == true) {
-                    // Extract timestamp: last 19 chars are always yyyy-MM-dd_HH-mm-ss
-                    val startMs = if (dir.name.length >= 19) {
-                        runCatching {
-                            val ts = dir.name.takeLast(19)
-                            sessionDateFmt.parse(ts)?.time
-                        }.getOrNull()
-                    } else null
-                    // Device name: everything before the trailing _yyyy-MM-dd_HH-mm-ss (20 chars)
-                    val deviceName = if (dir.name.length > 20)
-                        dir.name.dropLast(20).trimEnd('_').replace('_', ' ')
-                    else dir.name
-                    results.add(RecordingSession(
-                        sessionId = dir.name,
-                        deviceName = deviceName,
-                        startTimeMs = startMs ?: dir.lastModified(),
-                        files = csvFiles
-                    ))
-                }
-            } catch (_: Exception) {}
+                val csvFiles = (dir.listFiles() ?: emptyArray())
+                    .filter { it.isFile && it.extension == "csv" }
+                    .sortedBy { it.name }
+                    .mapNotNull { f ->
+                        try { parseRecordingFile(f, dir.name) }
+                        catch (e: Exception) {
+                            AppLog.w("REC", "Cannot parse ${f.name}: ${e.message}")
+                            null
+                        }
+                    }
+
+                AppLog.d("REC", "  dir=${dir.name}  csvs=${csvFiles.size}")
+
+                // Include even empty directories so the user sees them
+                val startMs = if (dir.name.length >= 19) {
+                    val candidate = dir.name.takeLast(19)   // yyyy-MM-dd_HH-mm-ss
+                    runCatching { sessionDateFmt.parse(candidate)?.time }.getOrNull()
+                } else null
+
+                // Device name: strip the trailing _yyyy-MM-dd_HH-mm-ss (20 chars = '_' + 19)
+                val deviceName = if (dir.name.length > 20)
+                    dir.name.dropLast(20).trimEnd('_').replace('_', ' ')
+                else dir.name
+
+                results.add(RecordingSession(
+                    sessionId  = dir.name,
+                    deviceName = deviceName,
+                    startTimeMs = startMs ?: dir.lastModified(),
+                    files      = csvFiles
+                ))
+            } catch (e: Exception) {
+                AppLog.e("REC", "Error scanning dir ${dir.name}: ${e.message}")
+            }
         }
 
-        // ── Legacy bare CSV files in root (v1.0) ─────────────────────────────
+        // ── Bare CSV files in root (v1.0 — no sub-directory) ─────────────────
         if (legacyFiles.isNotEmpty()) {
-            // Group by common timestamp prefix if possible, else one session per file
-            val legacyCsvs = legacyFiles.sortedBy { it.name }
-                .mapNotNull { f -> parseRecordingFile(f, "legacy") }
+            AppLog.d("REC", "Legacy root CSVs: ${legacyFiles.size}")
+            val legacyCsvs = legacyFiles
+                .sortedBy { it.name }
+                .mapNotNull { f ->
+                    try { parseRecordingFile(f, "legacy") }
+                    catch (e: Exception) {
+                        AppLog.w("REC", "Cannot parse legacy ${f.name}: ${e.message}")
+                        null
+                    }
+                }
             if (legacyCsvs.isNotEmpty()) {
                 results.add(RecordingSession(
-                    sessionId = "legacy",
-                    deviceName = "Legacy recordings",
+                    sessionId   = "legacy",
+                    deviceName  = "Legacy recordings",
                     startTimeMs = legacyFiles.minOf { it.lastModified() },
-                    files = legacyCsvs
+                    files       = legacyCsvs
                 ))
             }
         }
 
+        AppLog.i("REC", "listSessions complete: ${results.size} session(s)")
         results.sortedByDescending { it.startTimeMs }
     }
 
