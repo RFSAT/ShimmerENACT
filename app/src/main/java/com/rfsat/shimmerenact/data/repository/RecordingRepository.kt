@@ -293,8 +293,9 @@ class RecordingRepository(private val context: Context) {
      * Uses UTF-8 with replacement so non-UTF-8 bytes from older device locales
      * do not throw a MalformedInputException.
      */
-    private fun parseRecordingFile(f: File, sessionId: String): RecordingFile? = try {
+    private fun parseRecordingFile(f: File, sessionId: String): RecordingFile? {
         if (!f.exists() || !f.canRead()) return null
+        return try {
 
         var rate       = 0
         var rows       = -1L
@@ -359,9 +360,10 @@ class RecordingRepository(private val context: Context) {
             sessionId         = sessionId,
             rowCount          = rowCount
         )
-    } catch (e: Exception) {
-        AppLog.w("REC", "parseRecordingFile(${f.name}): ${e.javaClass.simpleName}: ${e.message}")
-        null
+        } catch (e: Exception) {
+            AppLog.w("REC", "parseRecordingFile(${f.name}): ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
     }
 
     // ─── Delete session directory ─────────────────────────────────────────────

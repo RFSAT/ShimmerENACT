@@ -2,6 +2,13 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.4
+
+### Fixed
+- `RecordingRepository.parseRecordingFile`: compile error — `return null` inside
+  expression-body function (`= try { … }`); converted to block body (`{ … }`) with
+  `return null` guard and `return try { … } catch { … }`
+
 ## v1.7.3
 
 ### Fixed
