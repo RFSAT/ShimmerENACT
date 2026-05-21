@@ -77,8 +77,8 @@ Every push to `main` or `develop` automatically builds both a debug and release 
 ### Create a versioned release
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.5.1
+git push origin v1.5.1
 ```
 
 This triggers the workflow, builds APKs, and publishes a GitHub Release automatically.

@@ -62,7 +62,7 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
             Text("ShimmerENACT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EnactGreen)
-            Text("Version 1.0.0", fontSize = 13.sp, color = EnactOnSurfaceDim)
+            Text("Version 1.5.1", fontSize = 13.sp, color = EnactOnSurfaceDim)
 
             Spacer(Modifier.height(28.dp))
 
