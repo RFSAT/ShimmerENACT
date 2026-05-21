@@ -88,14 +88,13 @@ fun RecordingViewerScreen(
                         val cols = trimmed.split(",")
                         if (cols.size <= valCol) continue
 
-                        // Resolve timestamp in ms
-                        val tsMs: Long = if (tsCol >= 0) {
-                            cols.getOrNull(tsCol)?.trim()?.toLongOrNull()
-                        } else null
-                            ?: cols.getOrNull(0)?.trim()?.let { iso ->
-                                runCatching { isoFmt.parse(iso)?.time }.getOrNull()
-                            }
-                            ?: continue
+                        // Resolve timestamp in ms — try timestamp_ms column first, then ISO col 0
+                        val tsMs: Long = (
+                            if (tsCol >= 0) cols.getOrNull(tsCol)?.trim()?.toLongOrNull()
+                            else null
+                        ) ?: cols.getOrNull(0)?.trim()?.let { iso ->
+                            runCatching { isoFmt.parse(iso)?.time }.getOrNull()
+                        } ?: continue
 
                         val v = cols.getOrNull(valCol)?.trim()?.toDoubleOrNull() ?: continue
                         result.add(CsvPoint(tsMs, v))

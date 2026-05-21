@@ -2,6 +2,13 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.2
+
+### Fixed
+- `RecordingViewerScreen`: type mismatch compile error on line 92 — `if/else`
+  returning `Long?` assigned to `Long`; flattened into a single nullable chain
+  terminated by `?: continue`
+
 ## v1.7.1
 
 ### Fixed
