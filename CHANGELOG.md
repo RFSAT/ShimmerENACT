@@ -2,6 +2,28 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.6.0
+
+### Added
+- About screen now reads version from BuildConfig — version number is always consistent
+  with the build, no longer needs manual update
+- Graph viewer for recorded CSV files — tap the chart icon on any file in Recordings
+  to view its data as an interactive line chart with pinch-to-zoom and drag
+- Value tracing in graph viewer — tap any point to display its exact timestamp and value
+- Summary statistics (min / mean / max / sample count) shown above the graph
+- Robust loading of sessions recorded with earlier app versions (v1.0, v1.1):
+  bare CSV files in the ShimmerENACT root are grouped under a "Legacy recordings"
+  session; header parsing handles all past formats with graceful fallbacks
+- Older session deletion now works correctly for all directory naming schemes
+
+### Changed
+- Home screen shows a "Connected" status card when a sensor is already connected,
+  replacing the "Connect to Shimmer3" button — prevents accidental re-connection
+- Disconnect button on Home screen is disabled while recording is in progress
+- Paired Bluetooth device list shows only Shimmer devices by default; a "Show all"
+  toggle reveals other paired devices when needed
+- Connect screen blocks further connection attempts when a sensor is already connected
+
 ## v1.1.1 (current)
 
 ### Fixed

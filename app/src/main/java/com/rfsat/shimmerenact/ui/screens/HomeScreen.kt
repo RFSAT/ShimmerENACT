@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rfsat.shimmerenact.data.models.ConnectionState
 import com.rfsat.shimmerenact.data.models.SensorType
 import com.rfsat.shimmerenact.ui.theme.*
 import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
@@ -26,9 +27,13 @@ import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
 fun HomeScreen(
     viewModel: ShimmerViewModel,
     onNavigateToConnect: () -> Unit,
-    onNavigateToAbout: () -> Unit
+    onNavigateToAbout: () -> Unit,
+    onDisconnect: () -> Unit = {}
 ) {
     val activeSensorType by viewModel.activeSensorType.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val isConnected = uiState.connectionState == ConnectionState.CONNECTED
+    val recordingState by viewModel.recordingState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -118,22 +123,64 @@ fun HomeScreen(
 
         Spacer(Modifier.height(28.dp))
 
-        Button(
-            onClick = onNavigateToConnect,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = EnactGreen)
-        ) {
-            Icon(Icons.Default.Bluetooth, contentDescription = null, tint = EnactDark)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Connect to Shimmer3",
-                fontWeight = FontWeight.Bold,
-                color = EnactDark,
-                fontSize = 16.sp
-            )
+        if (isConnected) {
+            // Show connected status + disconnect button
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = EnactGreen.copy(alpha = 0.12f)),
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, EnactGreen.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.BluetoothConnected, null,
+                        tint = EnactGreen, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Connected", fontWeight = FontWeight.SemiBold,
+                            color = EnactGreen, fontSize = 14.sp)
+                        if (recordingState.isRecording) {
+                            Text("Recording in progress", fontSize = 12.sp,
+                                color = EnactError.copy(alpha = 0.8f))
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = onDisconnect,
+                        enabled = !recordingState.isRecording,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (recordingState.isRecording) EnactOnSurfaceDim.copy(alpha = 0.3f)
+                            else EnactError.copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Disconnect",
+                            color = if (recordingState.isRecording)
+                                EnactOnSurfaceDim.copy(alpha = 0.4f) else EnactError,
+                            fontSize = 13.sp)
+                    }
+                }
+            }
+        } else {
+            Button(
+                onClick = onNavigateToConnect,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = EnactGreen)
+            ) {
+                Icon(Icons.Default.Bluetooth, contentDescription = null, tint = EnactDark)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Connect to Shimmer3",
+                    fontWeight = FontWeight.Bold,
+                    color = EnactDark,
+                    fontSize = 16.sp
+                )
+            }
         }
 
         Spacer(Modifier.height(12.dp))

@@ -201,15 +201,64 @@ fun ConnectScreen(
                 }
 
                 // Paired devices list
-                Text("PAIRED DEVICES", fontSize = 11.sp, color = EnactGreen.copy(alpha = 0.6f),
-                    letterSpacing = 1.5.sp)
+                val isConnected = uiState.connectionState == ConnectionState.CONNECTED
+                var showAllDevices by remember { mutableStateOf(false) }
+                val shimmerDevices = pairedDevices.filter { it.name.contains("Shimmer", ignoreCase = true) }
+                val displayedDevices = if (showAllDevices) pairedDevices else shimmerDevices
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("PAIRED DEVICES", fontSize = 11.sp, color = EnactGreen.copy(alpha = 0.6f),
+                        letterSpacing = 1.5.sp, modifier = Modifier.weight(1f))
+                    if (pairedDevices.isNotEmpty() && shimmerDevices.size < pairedDevices.size) {
+                        TextButton(
+                            onClick = { showAllDevices = !showAllDevices },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                if (showAllDevices) "Shimmer only" else "Show all (${pairedDevices.size})",
+                                fontSize = 11.sp,
+                                color = EnactGreen.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
 
-                if (pairedDevices.isEmpty()) {
-                    Text("No paired devices found. Pair your Shimmer3 in Android Settings → Bluetooth first.",
-                        fontSize = 13.sp, color = EnactOnSurfaceDim)
+                if (isConnected) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = EnactGreen.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, EnactGreen.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.BluetoothConnected, null,
+                                tint = EnactGreen, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sensor connected. Disconnect first to pair a different device.",
+                                fontSize = 13.sp, color = EnactGreen.copy(alpha = 0.8f))
+                        }
+                    }
+                } else if (displayedDevices.isEmpty()) {
+                    if (shimmerDevices.isEmpty() && pairedDevices.isNotEmpty()) {
+                        Column {
+                            Text("No Shimmer devices found in paired list.",
+                                fontSize = 13.sp, color = EnactOnSurfaceDim)
+                            Spacer(Modifier.height(4.dp))
+                            TextButton(onClick = { showAllDevices = true }) {
+                                Text("Show all ${pairedDevices.size} paired device(s)",
+                                    color = EnactGreen.copy(alpha = 0.7f), fontSize = 13.sp)
+                            }
+                        }
+                    } else {
+                        Text("No paired devices found. Pair your Shimmer3 in Android Settings → Bluetooth first.",
+                            fontSize = 13.sp, color = EnactOnSurfaceDim)
+                    }
                 } else {
-                    pairedDevices.forEach { device ->
+                    displayedDevices.forEach { device ->
                         val isShimmer = device.name.contains("Shimmer", ignoreCase = true)
                         DeviceRow(
                             device = device,

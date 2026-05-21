@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rfsat.shimmerenact.BuildConfig
 import com.rfsat.shimmerenact.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,7 +63,7 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
             Text("ShimmerENACT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EnactGreen)
-            Text("Version 1.5.1", fontSize = 13.sp, color = EnactOnSurfaceDim)
+            Text("Version ${BuildConfig.VERSION_NAME}", fontSize = 13.sp, color = EnactOnSurfaceDim)
 
             Spacer(Modifier.height(28.dp))
 

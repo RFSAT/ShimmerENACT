@@ -12,7 +12,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import android.net.Uri
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.rfsat.shimmerenact.data.repository.RecordingFile
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -182,7 +186,10 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                 HomeScreen(
                     viewModel = viewModel,
                     onNavigateToConnect = { navController.navigate(Screen.Connect.route) },
-                    onNavigateToAbout = { navController.navigate(Screen.About.route) }
+                    onNavigateToAbout = { navController.navigate(Screen.About.route) },
+                    onDisconnect = {
+                        viewModel.disconnect()
+                    }
                 )
             }
             composable(Screen.Connect.route) {
@@ -210,6 +217,29 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
             composable(Screen.Recordings.route) {
                 RecordingsScreen(
                     viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onViewFile = { rf ->
+                        val encoded = Uri.encode(rf.path)
+                        navController.navigate(Screen.RecordingViewer.createRoute(encoded))
+                    }
+                )
+            }
+            composable(
+                route = Screen.RecordingViewer.route,
+                arguments = listOf(navArgument("filePath") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val encodedPath = backStackEntry.arguments?.getString("filePath") ?: ""
+                val filePath = Uri.decode(encodedPath)
+                // Reconstruct RecordingFile from the sessions list
+                val sessions by viewModel.sessions.collectAsState()
+                val rf = sessions.flatMap { it.files }.find { it.path == filePath }
+                    ?: com.rfsat.shimmerenact.data.repository.RecordingFile(
+                        name = filePath.substringAfterLast("/").removeSuffix(".csv"),
+                        path = filePath,
+                        sizeBytes = java.io.File(filePath).length()
+                    )
+                RecordingViewerScreen(
+                    recordingFile = rf,
                     onBack = { navController.popBackStack() }
                 )
             }

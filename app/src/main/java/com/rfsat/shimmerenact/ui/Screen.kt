@@ -9,4 +9,7 @@ sealed class Screen(val route: String) {
     object Recordings    : Screen("recordings")
     object Log        : Screen("log")
     object About      : Screen("about")
+    object RecordingViewer : Screen("recording_viewer/{filePath}") {
+        fun createRoute(encodedPath: String) = "recording_viewer/$encodedPath"
+    }
 }

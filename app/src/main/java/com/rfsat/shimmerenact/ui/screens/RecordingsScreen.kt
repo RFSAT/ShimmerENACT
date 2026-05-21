@@ -32,7 +32,8 @@ import java.util.*
 @Composable
 fun RecordingsScreen(
     viewModel: ShimmerViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onViewFile: (RecordingFile) -> Unit = {}
 ) {
     val sessions by viewModel.sessions.collectAsState()
     val context = LocalContext.current
@@ -85,6 +86,8 @@ fun RecordingsScreen(
                     SessionCard(
                         session = session,
                         dateFmt = dateFmt,
+                        onViewFile = onViewFile,
+                        onShareFile = { rf -> onShareFile(rf) },
                         onShareSession = {
                             // Share all files in session as a zip or sequential intents
                             val uris = session.files.mapNotNull { rf ->
@@ -152,6 +155,7 @@ fun RecordingsScreen(
 fun SessionCard(
     session: RecordingSession,
     dateFmt: SimpleDateFormat,
+    onViewFile: (RecordingFile) -> Unit = {},
     onShareSession: () -> Unit,
     onShareFile: (RecordingFile) -> Unit,
     onDeleteSession: () -> Unit
@@ -243,7 +247,7 @@ fun SessionCard(
 }
 
 @Composable
-fun FileRow(file: RecordingFile, onShare: () -> Unit) {
+fun FileRow(file: RecordingFile, onView: () -> Unit = {}, onShare: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -276,6 +280,10 @@ fun FileRow(file: RecordingFile, onShare: () -> Unit) {
                         color = EnactOnSurface.copy(alpha = 0.4f))
                 }
             }
+        }
+        IconButton(onClick = onView, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.ShowChart, "View graph", tint = EnactGreen.copy(alpha = 0.7f),
+                modifier = Modifier.size(16.dp))
         }
         IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Default.Share, "Share", tint = EnactGreen.copy(alpha = 0.7f),
