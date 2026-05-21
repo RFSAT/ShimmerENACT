@@ -87,7 +87,6 @@ fun RecordingsScreen(
                         session = session,
                         dateFmt = dateFmt,
                         onViewFile = onViewFile,
-                        onShareFile = { rf -> onShareFile(rf) },
                         onShareSession = {
                             // Share all files in session as a zip or sequential intents
                             val uris = session.files.mapNotNull { rf ->

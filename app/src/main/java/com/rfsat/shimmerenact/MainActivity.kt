@@ -236,7 +236,8 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                     ?: com.rfsat.shimmerenact.data.repository.RecordingFile(
                         name = filePath.substringAfterLast("/").removeSuffix(".csv"),
                         path = filePath,
-                        sizeBytes = java.io.File(filePath).length()
+                        sizeBytes = java.io.File(filePath).length(),
+                        lastModified = java.io.File(filePath).lastModified()
                     )
                 RecordingViewerScreen(
                     recordingFile = rf,
