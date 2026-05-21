@@ -9,11 +9,13 @@ android {
     buildToolsVersion "34.0.0"
 
     defaultConfig {
-        applicationId "com.rfsat.shimmerenact"
+        // Must match the package name registered in Google Play Console.
+        // The source namespace (com.rfsat.shimmerenact) is separate and unchanged.
+        applicationId "com.ShimmerENACT"
         minSdk 26
         targetSdk 34
-        versionCode 49
-        versionName "1.7.4"
+        versionCode 50
+        versionName "1.7.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

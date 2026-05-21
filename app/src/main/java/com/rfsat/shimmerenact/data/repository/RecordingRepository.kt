@@ -305,8 +305,13 @@ class RecordingRepository(private val context: Context) {
 
         // Stream the file line by line; stop scanning metadata after 30 lines
         // but continue counting data rows until EOF.
-        val charsetUTF8 = Charsets.UTF_8
-        f.bufferedReader(charsetUTF8).use { br ->
+        // Use a replacement-mode CharsetDecoder so malformed bytes in files written
+        // by older app versions (which used the device default charset via FileWriter)
+        // are silently replaced with '?' rather than throwing MalformedInputException.
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE)
+        java.io.BufferedReader(java.io.InputStreamReader(f.inputStream(), decoder)).use { br ->
             var lineNum = 0
             var headerSeen = false
             for (rawLine in br.lineSequence()) {

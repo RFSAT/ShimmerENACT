@@ -2,6 +2,21 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.5
+
+### Fixed
+- Google Play upload: `applicationId` changed to `com.ShimmerENACT` to match the
+  package name registered in Google Play Console; the Kotlin source `namespace`
+  (`com.rfsat.shimmerenact`) is unchanged — no source file edits required
+- Recordings list: files from sessions recorded with earlier app versions now
+  appear correctly with their size and row count; root cause was that
+  `f.bufferedReader(Charsets.UTF_8)` throws `MalformedInputException` when the
+  file contains bytes that are invalid UTF-8 (written by older `FileWriter` calls
+  that defaulted to the device locale charset on some devices); replaced with
+  `InputStreamReader` backed by a `CharsetDecoder` configured with
+  `CodingErrorAction.REPLACE` so bad bytes are silently substituted rather
+  than causing the whole file parse to fail and return `null`
+
 ## v1.7.4
 
 ### Fixed
