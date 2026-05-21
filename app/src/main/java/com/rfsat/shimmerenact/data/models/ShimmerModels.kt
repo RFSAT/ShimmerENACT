@@ -26,6 +26,7 @@ data class ShimmerSignal(
 )
 
 val GSR_SIGNALS = listOf(
+<<<<<<< HEAD
     ShimmerSignal("gsr_kohm",    "GSR",          "kΩ",   0xFF43AF81, 0.0, 2000.0),
     ShimmerSignal("ppg_mv",      "PPG",          "mV",   0xFF86BA39, -1000.0, 1000.0),
     ShimmerSignal("accel_x",     "Accel X",      "m/s²", 0xFFE07B39, -20.0, 20.0),
@@ -39,6 +40,20 @@ val GSR_SIGNALS = listOf(
     ShimmerSignal("mag_z",       "Mag Z",        "µT",   0xFF4040E0, -1000.0, 1000.0),
     ShimmerSignal("temp_c",      "Temperature",  "°C",   0xFFFF8C00, -40.0, 85.0),
     ShimmerSignal("batt_mv",     "Battery",      "mV",   0xFF888888, 0.0, 4500.0)
+=======
+    ShimmerSignal("gsr_kohm",  "GSR",         "kΩ",   0xFF43AF81, 0.0, 2000.0,     RATE_GSR_PPG),
+    ShimmerSignal("ppg_mv",    "PPG",         "mV",   0xFF86BA39, -1000.0, 1000.0,  RATE_GSR_PPG),
+    ShimmerSignal("accel_x",   "Accel X",     "m/s²", 0xFFE07B39, -20.0, 20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_y",   "Accel Y",     "m/s²", 0xFFE0B539, -20.0, 20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_z",   "Accel Z",     "m/s²", 0xFF39A8E0, -20.0, 20.0,     RATE_ACCEL),
+    ShimmerSignal("gyro_x",    "Gyro X",      "°/s",  0xFFB039E0, -500.0, 500.0,   RATE_GYRO),
+    ShimmerSignal("gyro_y",    "Gyro Y",      "°/s",  0xFFE039B0, -500.0, 500.0,   RATE_GYRO),
+    ShimmerSignal("gyro_z",    "Gyro Z",      "°/s",  0xFF39E0B0, -500.0, 500.0,   RATE_GYRO),
+    ShimmerSignal("mag_x",     "Mag X",       "µT",   0xFFE04040, -1000.0, 1000.0, RATE_MAG),
+    ShimmerSignal("mag_y",     "Mag Y",       "µT",   0xFF40E040, -1000.0, 1000.0, RATE_MAG),
+    ShimmerSignal("mag_z",     "Mag Z",       "µT",   0xFF4040E0, -1000.0, 1000.0, RATE_MAG),
+    ShimmerSignal("batt_mv",   "Battery",     "mV",   0xFF888888, 0.0, 4500.0,     RATE_SLOW)
+>>>>>>> parent of 335abb6 (Added position)
 )
 
 val EXG_SIGNALS = listOf(
@@ -125,5 +140,9 @@ data class SensorUiState(
     val recentSamples: List<ShimmerSample> = emptyList(),   // ring buffer for chart
     val recordingState: RecordingState = RecordingState(),
     val errorMessage: String? = null,
+<<<<<<< HEAD
     val samplesPerSecond: Double = 0.0,
+=======
+    val samplesPerSecond: Double = 0.0
+>>>>>>> parent of 335abb6 (Added position)
 )

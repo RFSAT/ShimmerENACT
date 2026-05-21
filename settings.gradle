@@ -11,6 +11,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
+<<<<<<< HEAD
         maven {
             url 'https://api.mapbox.com/downloads/v2/releases/maven'
             authentication { basic(BasicAuthentication) }
@@ -23,6 +24,8 @@ dependencyResolutionManagement {
                               .getOrElse(System.getenv('MAPBOX_DOWNLOADS_TOKEN') ?: '')
             }
         }
+=======
+>>>>>>> parent of 335abb6 (Added position)
     }
 }
 

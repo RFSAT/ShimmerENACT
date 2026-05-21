@@ -16,8 +16,13 @@ android {
         applicationId "com.rfsat.shimmerenact"
         minSdk 26
         targetSdk 34
+<<<<<<< HEAD
         versionCode 73
         versionName "2.0.0"
+=======
+        versionCode 43
+        versionName "1.5.1"
+>>>>>>> parent of 335abb6 (Added position)
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary true }
@@ -95,6 +100,7 @@ dependencies {
 
     // Permissions helper
     implementation 'com.google.accompanist:accompanist-permissions:0.33.2-alpha'
+<<<<<<< HEAD
 
     // Location services (Google Play Services)
     implementation 'com.google.android.gms:play-services-location:21.2.0'
@@ -102,6 +108,9 @@ dependencies {
     // Mapbox Maps SDK for Android
     implementation 'com.mapbox.maps:android:11.4.0'
     implementation 'com.mapbox.extension:maps-compose:11.4.0'
+=======
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+>>>>>>> parent of 335abb6 (Added position)
 
     // Charts
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'

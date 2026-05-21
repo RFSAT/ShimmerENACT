@@ -89,12 +89,29 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     private var spsCount = 0
 
     init {
+<<<<<<< HEAD
         observeConnectionState()
         observeSamples()
         observeErrors()
         observeLocation()
         loadPrefs()
         loadRecordings()
+=======
+        try {
+            // Always reset recording state on startup — if the app crashed mid-recording,
+            // this prevents a corrupted state from crashing every subsequent launch.
+            recordingRepo.resetRecordingState()
+            _recordingState.value = RecordingState()
+
+            observeConnectionState()
+            observeSamples()
+            observeErrors()
+            loadPrefs()
+            loadSessions()
+        } catch (e: Exception) {
+            AppLog.e("VM", "Init error: ${e.javaClass.simpleName}: ${e.message}")
+        }
+>>>>>>> parent of 335abb6 (Added position)
     }
 
     private fun observeConnectionState() {
@@ -131,9 +148,19 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
                 // Write to CSV if recording
                 if (recordingRepo.isRecording) {
+<<<<<<< HEAD
                     val signals = signalsForType(activeConfig.value.sensorType)
                     recordingRepo.writeSample(sample, signals)
                     _recordingState.update { it.copy(sampleCount = recordingRepo.currentSampleCount) }
+=======
+                    recordingRepo.writeSampleSync(sample)
+                    _recordingState.update { rs ->
+                        rs.copy(
+                            sampleCount = rs.sampleCount + 1,
+                            rowsWritten = recordingRepo.totalSamplesWritten
+                        )
+                    }
+>>>>>>> parent of 335abb6 (Added position)
                 }
             }
         }
@@ -208,6 +235,7 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
     fun disconnect() = btManager.disconnect()
 
+<<<<<<< HEAD
     fun lastSession() = recordingRepo.lastSession()
 
     private var _pendingAppend = false
@@ -220,6 +248,29 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             val signals = signalsForType(config.sensorType)
             val result = recordingRepo.startRecording(config.displayName, signals)
             result.onSuccess { path ->
+=======
+    fun startRecording() {
+        viewModelScope.launch {
+            val config = activeConfig.value
+            val allSignals = signalsForType(config.sensorType)
+            val recKeys = config.resolvedRecordingSignals(allSignals)
+            val recSignals = allSignals.filter { it.key in recKeys }
+
+            AppLog.i("REC", "Starting — ${recSignals.size} signals at hw=${config.hardwareRateHz}Hz")
+            recSignals.forEach { sig ->
+                val rate = config.effectiveRateHz(sig.key, sig.rateConstraints)
+                AppLog.d("REC", "  ${sig.key}: $rate Hz")
+            }
+
+            val result = recordingRepo.startRecording(
+                deviceName = config.displayName,
+                signals = recSignals,
+                signalRatesHz = config.signalRatesHz,
+                hardwareHz = config.hardwareRateHz
+            )
+            result.onSuccess { paths ->
+                AppLog.ok("REC", "Recording started — ${paths.size} files")
+>>>>>>> parent of 335abb6 (Added position)
                 _recordingState.value = RecordingState(
                     isRecording = true,
                     startTimeMs = System.currentTimeMillis(),
