@@ -61,11 +61,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Mapbox public access token injected at build time -->
-        <meta-data
-            android:name="com.mapbox.maps.AccessToken"
-            android:value="${MAPBOX_ACCESS_TOKEN}" />
-
     </application>
 
 </manifest>

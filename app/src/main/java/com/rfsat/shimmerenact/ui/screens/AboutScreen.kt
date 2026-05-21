@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import android.content.pm.PackageManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,7 +63,13 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
             Text("ShimmerENACT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EnactGreen)
-            Text("Version 1.0.0", fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.5f))
+            val ctx = LocalContext.current
+            val versionName = remember {
+                try {
+                    ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
+                } catch (_: Exception) { "—" }
+            }
+            Text("Version $versionName", fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.5f))
 
             Spacer(Modifier.height(28.dp))
 

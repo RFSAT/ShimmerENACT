@@ -10,7 +10,6 @@ import com.rfsat.shimmerenact.data.models.*
 import com.rfsat.shimmerenact.data.repository.AppLog
 import com.rfsat.shimmerenact.data.repository.PreferencesRepository
 import com.rfsat.shimmerenact.data.repository.RecordingRepository
-import com.rfsat.shimmerenact.data.repository.LocationRepository
 import com.rfsat.shimmerenact.data.repository.RecordingSession
 import com.rfsat.shimmerenact.data.repository.RecordingFile
 import kotlinx.coroutines.flow.*
@@ -23,7 +22,6 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     val btManager = ShimmerBluetoothManager(context)
     val prefsRepo = PreferencesRepository(context)
     val recordingRepo = RecordingRepository(context)
-    val locationRepo = LocationRepository(context)
 
     // ─── Sensor configurations ────────────────────────────────────────────────
     private val _gsrConfig = MutableStateFlow(
@@ -134,22 +132,9 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                 // Write to CSV if recording
                 if (recordingRepo.isRecording) {
                     val signals = signalsForType(activeConfig.value.sensorType)
-                    recordingRepo.writeSample(sample, signals, locationRepo.latestPoint())
+                    recordingRepo.writeSample(sample, signals)
                     _recordingState.update { it.copy(sampleCount = recordingRepo.currentSampleCount) }
                 }
-            }
-        }
-    }
-
-    private fun observeLocation() {
-        viewModelScope.launch {
-            locationRepo.currentLocation.collect { loc ->
-                _uiState.update { it.copy(currentLocation = loc) }
-            }
-        }
-        viewModelScope.launch {
-            locationRepo.locationTrace.collect { trace ->
-                _uiState.update { it.copy(locationTrace = trace) }
             }
         }
     }
@@ -227,9 +212,6 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
 
     private var _pendingAppend = false
     fun setPendingAppend(append: Boolean) { _pendingAppend = append }
-
-    fun startLocationUpdates() = locationRepo.startUpdates()
-    fun stopLocationUpdates()  = locationRepo.stopUpdates()
 
     fun startRecording(append: Boolean = _pendingAppend) {
         _pendingAppend = false

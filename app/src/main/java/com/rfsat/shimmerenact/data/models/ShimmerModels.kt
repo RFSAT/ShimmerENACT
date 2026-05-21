@@ -39,11 +39,7 @@ val GSR_SIGNALS = listOf(
     ShimmerSignal("mag_z",       "Mag Z",        "µT",   0xFF4040E0, -1000.0, 1000.0),
     ShimmerSignal("temp_c",      "Temperature",  "°C",   0xFFFF8C00, -40.0, 85.0),
     ShimmerSignal("batt_mv",     "Battery",      "mV",   0xFF888888, 0.0, 4500.0)
-,
-    ShimmerSignal("gps_lat",   "Latitude",    "°",    0xFF2196F3, -90.0,   90.0),
-    ShimmerSignal("gps_lon",   "Longitude",   "°",    0xFF03A9F4, -180.0,  180.0),
-    ShimmerSignal("gps_alt",   "Altitude",    "m",    0xFF00BCD4, -500.0,  9000.0),
-    ShimmerSignal("gps_acc",   "GPS Accuracy","m",    0xFF009688, 0.0,     200.0))
+)
 
 val EXG_SIGNALS = listOf(
     ShimmerSignal("exg1_ch1",    "ExG1 Ch1 (ECG/EMG)", "mV",  0xFF43AF81, -3.0, 3.0),
@@ -122,15 +118,6 @@ data class BtDeviceInfo(
 // ─── App-level UI state assembled by ViewModel ───────────────────────────────
 
 
-// ─── GPS location point ───────────────────────────────────────────────────────
-data class LocationPoint(
-    val lat: Double,
-    val lon: Double,
-    val altM: Double,
-    val accuracyM: Float,
-    val timestampMs: Long
-)
-
 data class SensorUiState(
     val config: SensorConfig,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
@@ -139,6 +126,4 @@ data class SensorUiState(
     val recordingState: RecordingState = RecordingState(),
     val errorMessage: String? = null,
     val samplesPerSecond: Double = 0.0,
-    val currentLocation: LocationPoint? = null,
-    val locationTrace: List<LocationPoint> = emptyList()
 )

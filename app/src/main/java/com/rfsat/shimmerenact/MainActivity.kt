@@ -1,6 +1,5 @@
 package com.rfsat.shimmerenact
 
-import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,8 +17,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.rfsat.shimmerenact.data.models.ConnectionState
 import com.rfsat.shimmerenact.data.repository.AppLog
 import com.rfsat.shimmerenact.data.repository.LogLevel
@@ -27,8 +24,6 @@ import com.rfsat.shimmerenact.ui.Screen
 import com.rfsat.shimmerenact.ui.screens.*
 import com.rfsat.shimmerenact.ui.theme.*
 import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
-import java.text.SimpleDateFormat
-import java.util.*
 
 class MainActivity : ComponentActivity() {
 
@@ -47,11 +42,10 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         viewModel.btManager.cleanup()
-        viewModel.stopLocationUpdates()
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShimmerApp(viewModel: ShimmerViewModel) {
     val navController = rememberNavController()
@@ -60,69 +54,8 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
     val uiState       by viewModel.uiState.collectAsState()
     val isConnected    = uiState.connectionState == ConnectionState.CONNECTED
 
-    // ── Location permissions ──────────────────────────────────────────────────
-    val locationPerms = rememberMultiplePermissionsState(
-        listOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-    )
-    LaunchedEffect(locationPerms.allPermissionsGranted) {
-        if (locationPerms.allPermissionsGranted) {
-            viewModel.startLocationUpdates()
-        } else {
-            locationPerms.launchMultiplePermissionRequest()
-        }
-    }
-
-    // ── Continue-recording dialog ─────────────────────────────────────────────
-    var showContinueDialog by remember { mutableStateOf(false) }
-    var previousSessionName by remember { mutableStateOf("") }
-    var previousFileCount   by remember { mutableStateOf(0) }
-    var previousSessionTime by remember { mutableStateOf(0L) }
-
-    LaunchedEffect(Unit) {
-        val last = viewModel.lastSession()
-        if (last != null && last.files.isNotEmpty()) {
-            previousSessionName = last.sessionId
-            previousFileCount   = last.files.size
-            previousSessionTime = last.startTimeMs
-            showContinueDialog  = true
-        }
-    }
-
-    if (showContinueDialog) {
-        val fmt = SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault())
-        AlertDialog(
-            onDismissRequest = { showContinueDialog = false },
-            containerColor   = EnactDark,
-            icon = { Icon(Icons.Default.FolderOpen, null, tint = EnactGreen) },
-            title = { Text("Previous Recording Found", color = EnactOnSurface) },
-            text  = {
-                Text(
-                    "A recording from ${fmt.format(Date(previousSessionTime))} " +
-                    "exists with $previousFileCount file(s).\n\n" +
-                    "Continue appending to it, or start new files?",
-                    color = EnactOnSurface.copy(alpha = 0.8f)
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showContinueDialog = false
-                    viewModel.setPendingAppend(true)
-                }) { Text("Continue", color = EnactGreen) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showContinueDialog = false
-                    viewModel.setPendingAppend(false)
-                }) { Text("New Files", color = EnactOnSurface.copy(alpha = 0.6f)) }
-            }
-        )
-    }
-
     val showBottomNav = currentRoute in listOf(
-        Screen.Home.route, Screen.Dashboard.route, Screen.Map.route,
+        Screen.Home.route, Screen.Dashboard.route,
         Screen.Recordings.route, Screen.Log.route
     )
 
@@ -157,13 +90,6 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                         onClick  = { if (isConnected) navigate(Screen.Dashboard.route) },
                         icon     = { Icon(Icons.Default.Analytics, null) },
                         label    = { Text("Live") },
-                        colors   = navItemColors
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Screen.Map.route,
-                        onClick  = { navigate(Screen.Map.route) },
-                        icon     = { Icon(Icons.Default.Map, null) },
-                        label    = { Text("Map") },
                         colors   = navItemColors
                     )
                     NavigationBarItem(
@@ -204,9 +130,9 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
-                    viewModel            = viewModel,
-                    onNavigateToConnect  = { navController.navigate(Screen.Connect.route) },
-                    onNavigateToAbout    = { navController.navigate(Screen.About.route) }
+                    viewModel           = viewModel,
+                    onNavigateToConnect = { navController.navigate(Screen.Connect.route) },
+                    onNavigateToAbout   = { navController.navigate(Screen.About.route) }
                 )
             }
             composable(Screen.Connect.route) {
@@ -230,9 +156,6 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                         }
                     }
                 )
-            }
-            composable(Screen.Map.route) {
-                MapScreen(viewModel = viewModel)
             }
             composable(Screen.Recordings.route) {
                 RecordingsScreen(viewModel = viewModel, onBack = { navController.popBackStack() })

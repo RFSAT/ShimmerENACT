@@ -2,7 +2,6 @@ package com.rfsat.shimmerenact.data.repository
 
 import android.content.Context
 import android.os.Environment
-import com.rfsat.shimmerenact.data.models.LocationPoint
 import com.rfsat.shimmerenact.data.models.ShimmerSample
 import com.rfsat.shimmerenact.data.models.ShimmerSignal
 import kotlinx.coroutines.Dispatchers
@@ -47,8 +46,7 @@ class RecordingRepository(private val context: Context) {
 
         suspend fun startRecording(
         deviceName: String,
-        signals: List<ShimmerSignal>,
-        append: Boolean = false
+        signals: List<ShimmerSignal>
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val dir = getRecordingDir()
@@ -81,8 +79,7 @@ class RecordingRepository(private val context: Context) {
     // ─── Write a single sample ────────────────────────────────────────────────
     suspend fun writeSample(
         sample: ShimmerSample,
-        signals: List<ShimmerSignal>,
-        location: LocationPoint? = null
+        signals: List<ShimmerSignal>
     ) = withContext(Dispatchers.IO) {
         if (!headerWritten || writer == null) return@withContext
         try {
@@ -123,16 +120,31 @@ class RecordingRepository(private val context: Context) {
 
     // ─── List all recordings ──────────────────────────────────────────────────
     suspend fun listRecordings(): List<RecordingFile> = withContext(Dispatchers.IO) {
-        getRecordingDir().listFiles { f -> f.extension == "csv" }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map { f ->
+        // Search both storage locations:
+        // 1. Current location: app-specific external files (getExternalFilesDir)
+        // 2. Legacy location: public Downloads used by versions prior to v1.5.x
+        val dirs = mutableListOf(getRecordingDir())
+        try {
+            val legacyDir = java.io.File(
+                android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS), "ShimmerENACT"
+            )
+            if (legacyDir.exists() && legacyDir.isDirectory) dirs.add(legacyDir)
+        } catch (_: Exception) {}
+
+        dirs.flatMap { dir ->
+            dir.listFiles { f -> f.extension == "csv" }?.toList() ?: emptyList()
+        }
+            .distinctBy { it.absolutePath }
+            .sortedByDescending { it.lastModified() }
+            .map { f ->
                 RecordingFile(
-                    name = f.nameWithoutExtension,
-                    path = f.absolutePath,
-                    sizeBytes = f.length(),
+                    name         = f.nameWithoutExtension,
+                    path         = f.absolutePath,
+                    sizeBytes    = f.length(),
                     lastModified = f.lastModified()
                 )
-            } ?: emptyList()
+            }
     }
 
     // ─── Delete a recording ───────────────────────────────────────────────────

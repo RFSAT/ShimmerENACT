@@ -4,7 +4,6 @@ sealed class Screen(val route: String) {
     object Home       : Screen("home")
     object Connect    : Screen("connect")
     object Dashboard  : Screen("dashboard")
-    object Map        : Screen("map")
     object Settings      : Screen("settings")
     object SamplingRate  : Screen("sampling_rate")
     object Recordings    : Screen("recordings")
