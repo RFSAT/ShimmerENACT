@@ -230,6 +230,7 @@ fun SessionCard(
                     session.files.forEach { rf ->
                         FileRow(
                             file = rf,
+                            onView = { onViewFile(rf) },
                             onShare = { onShareFile(rf) }
                         )
                         if (rf != session.files.last()) {

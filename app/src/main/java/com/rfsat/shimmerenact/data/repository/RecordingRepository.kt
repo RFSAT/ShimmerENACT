@@ -211,26 +211,29 @@ class RecordingRepository(private val context: Context) {
         val results = mutableListOf<RecordingSession>()
 
         // ── Session directories (v1.1+) ───────────────────────────────────────
+        // Dir name format: {safeName}_{yyyy-MM-dd_HH-mm-ss}
+        // The timestamp is always the rightmost 19 characters.
         sessionDirs.sortedByDescending { it.lastModified() }.forEach { dir ->
             try {
                 val csvFiles = dir.listFiles { f -> f.extension == "csv" }
                     ?.sortedBy { it.name }
                     ?.mapNotNull { f -> parseRecordingFile(f, dir.name) } ?: emptyList()
                 if (csvFiles.isNotEmpty() || dir.listFiles()?.isNotEmpty() == true) {
-                    // Derive session start time: parse timestamp from dir name if possible,
-                    // fall back to directory lastModified
-                    val startMs = runCatching {
-                        // dir name pattern: <DeviceName>_YYYY-MM-DD_HH-mm-ss
-                        val ts = dir.name.substringAfterLast("_", "").let { last ->
-                            val withDate = dir.name.substringBeforeLast("_")
-                            "${withDate.substringAfterLast("_")}_$last"
-                        }
-                        sessionDateFmt.parse(ts)?.time
-                    }.getOrNull() ?: dir.lastModified()
+                    // Extract timestamp: last 19 chars are always yyyy-MM-dd_HH-mm-ss
+                    val startMs = if (dir.name.length >= 19) {
+                        runCatching {
+                            val ts = dir.name.takeLast(19)
+                            sessionDateFmt.parse(ts)?.time
+                        }.getOrNull()
+                    } else null
+                    // Device name: everything before the trailing _yyyy-MM-dd_HH-mm-ss (20 chars)
+                    val deviceName = if (dir.name.length > 20)
+                        dir.name.dropLast(20).trimEnd('_').replace('_', ' ')
+                    else dir.name
                     results.add(RecordingSession(
                         sessionId = dir.name,
-                        deviceName = dir.name.substringBeforeLast("_"),
-                        startTimeMs = startMs,
+                        deviceName = deviceName,
+                        startTimeMs = startMs ?: dir.lastModified(),
                         files = csvFiles
                     ))
                 }

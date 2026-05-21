@@ -2,6 +2,16 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.0
+
+### Fixed
+- Graph viewer: tapping the chart icon on a file row now correctly opens the viewer
+  (the `onView` callback was wired into `SessionCard` but not forwarded into `FileRow`)
+- Recordings list: sessions recorded with earlier versions now appear correctly;
+  session start time is extracted from the rightmost 19 characters of the directory
+  name (`yyyy-MM-dd_HH-mm-ss`) instead of a broken substring reconstruction that
+  failed for device names containing underscores
+
 ## v1.6.0
 
 ### Added
