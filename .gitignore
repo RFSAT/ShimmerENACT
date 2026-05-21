@@ -22,3 +22,12 @@ keystore.properties
 # Android Studio
 .idea/
 *.iml
+
+# ── Signing keystores — NEVER commit these ────────────────────────────────────
+*.jks
+*.keystore
+keystore_base64.txt
+
+# ── Local signing config ──────────────────────────────────────────────────────
+# If you use a local keystore.properties file, keep it out of git:
+keystore.properties

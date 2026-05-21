@@ -31,7 +31,7 @@ data class LogEntry(
 
 object AppLog {
 
-    private const val MAX_ENTRIES = 500
+    private const val MAX_ENTRIES = 1000
 
     private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: StateFlow<List<LogEntry>> = _entries.asStateFlow()

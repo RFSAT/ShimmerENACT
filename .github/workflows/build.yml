@@ -1,103 +1,161 @@
-name: Build & Test
+name: ShimmerENACT CI
 
 on:
   push:
-    branches: [ "**" ]
-    tags:     [ "v*" ]
+    branches: [ main, develop ]
+    tags:     [ 'v*' ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
+
+# ── Environment ────────────────────────────────────────────────────────────────
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
 
 jobs:
+  # ── Build & test ─────────────────────────────────────────────────────────────
   build:
     name: Build & Test
     runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.version.outputs.name }}
+      version_code: ${{ steps.version.outputs.code }}
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: gradle
 
-      - name: Decode keystore
-        if: github.ref_type == 'tag'
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > $RUNNER_TEMP/release.jks
-            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
-          fi
-
-      # Write Mapbox tokens into gradle.properties so settings.gradle can read them
-      # via providers.gradleProperty() during dependency resolution.
-      - name: Write Mapbox tokens to gradle.properties
-        run: |
-          mkdir -p ~/.gradle
-          echo "MAPBOX_DOWNLOADS_TOKEN=${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}" >> ~/.gradle/gradle.properties
-          echo "MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}"     >> ~/.gradle/gradle.properties
-
-      - name: Extract version name
-        id: version
-        run: |
-          VERSION=$(grep 'versionName' app/build.gradle | grep -v '//' | head -1 \
-            | sed 's/.*"\(.*\)".*/\1/' | tr -d ' ')
-          echo "name=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
-      - name: Grant execute permission for gradlew
+      - name: Make gradlew executable
         run: chmod +x gradlew
 
+      # Read version from build.gradle so it appears in artifact names
+      - name: Extract version
+        id: version
+        run: |
+          CODE=$(grep 'versionCode ' app/build.gradle | head -1 | tr -dc '0-9')
+          NAME=$(grep 'versionName ' app/build.gradle | head -1 | sed 's/.*versionName[[:space:]]*"\([^"]*\)".*/\1/')
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "Version: $NAME ($CODE)"
+
+      # Run lint with continue-on-error — lint failures should warn, not block
+      - name: Run lint
+        run: ./gradlew lintDebug --stacktrace
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+        continue-on-error: true
+
+      # ── Debug APK (no secrets needed) ────────────────────────────────────────
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
-        env:
-          MAPBOX_ACCESS_TOKEN:    ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          MAPBOX_DOWNLOADS_TOKEN: ${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShimmerENACT-${{ steps.version.outputs.name }}-debug
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 30
+          name: ShimmerENACT-debug-${{ steps.version.outputs.name }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
 
-      - name: Build release APK and AAB
-        if: github.ref_type == 'tag'
-        run: ./gradlew assembleRelease bundleRelease --stacktrace
+      # ── Release APK (signed, for sideloading / OTA update) ───────────────────
+      - name: Decode keystore
+        if: env.KEYSTORE_BASE64 != ''
         env:
-          MAPBOX_ACCESS_TOKEN:    ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          MAPBOX_DOWNLOADS_TOKEN: ${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}
-          KEYSTORE_PATH:          ${{ env.KEYSTORE_PATH }}
-          KEY_ALIAS:              ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD:           ${{ secrets.KEY_PASSWORD }}
-          STORE_PASSWORD:         ${{ secrets.STORE_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > $RUNNER_TEMP/keystore.jks
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/keystore.jks" >> $GITHUB_ENV
+
+      - name: Build release APK
+        env:
+          KEY_ALIAS:      ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload release APK
-        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: ShimmerENACT-${{ steps.version.outputs.name }}-release
-          path: app/build/outputs/apk/release/*.apk
+          name: ShimmerENACT-release-${{ steps.version.outputs.name }}
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 90
 
-      - name: Upload AAB
-        if: github.ref_type == 'tag'
+      # ── Release AAB (signed, for Google Play Store upload) ───────────────────
+      - name: Build release AAB
+        env:
+          KEY_ALIAS:      ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: ./gradlew bundleRelease --stacktrace
+
+      - name: Upload release AAB
         uses: actions/upload-artifact@v4
         with:
-          name: ShimmerENACT-${{ steps.version.outputs.name }}-bundle
-          path: app/build/outputs/bundle/release/*.aab
+          name: ShimmerENACT-release-${{ steps.version.outputs.name }}-PlayStore
+          path: app/build/outputs/bundle/release/app-release.aab
           retention-days: 90
+
+  # ── GitHub Release (on version tags only) ────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ShimmerENACT-release-${{ needs.build.outputs.version_name }}
+          path: artifacts/
+
+      - name: Download release AAB
+        uses: actions/download-artifact@v4
+        with:
+          name: ShimmerENACT-release-${{ needs.build.outputs.version_name }}-PlayStore
+          path: artifacts/
+
+      - name: Rename artifacts
+        run: |
+          mv artifacts/app-release.apk \
+             artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.apk
+          mv artifacts/app-release.aab \
+             artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.aab
 
       - name: Create GitHub Release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          name: ShimmerENACT v${{ steps.version.outputs.name }}
+          name: "ShimmerENACT v${{ needs.build.outputs.version_name }}"
+          body: |
+            ## ShimmerENACT v${{ needs.build.outputs.version_name }}
+
+            RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
+
+            ### Artifacts
+            | File | Use |
+            |------|-----|
+            | `.apk` | Install directly on Android devices (sideloading) |
+            | `.aab` | Upload to Google Play Store |
+
+            ### Installing the APK
+            Download the `.apk`, transfer to your Android device and install.
+            Enable **Install unknown apps** for your file manager if prompted.
+            This signed release will update over any previous version without uninstalling.
+
+            ### Changelog
+            See [CHANGELOG.md](CHANGELOG.md) for details.
           files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
-          generate_release_notes: true
+            artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.apk
+            artifacts/ShimmerENACT-${{ needs.build.outputs.version_name }}.aab
+          draft: false
+          prerelease: ${{ contains(needs.build.outputs.version_name, 'alpha') || contains(needs.build.outputs.version_name, 'beta') }}
