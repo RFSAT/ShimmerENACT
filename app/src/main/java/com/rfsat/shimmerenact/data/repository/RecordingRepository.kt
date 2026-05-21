@@ -287,44 +287,82 @@ class RecordingRepository(private val context: Context) {
         results.sortedByDescending { it.startTimeMs }
     }
 
-    /** Parse a single CSV file into a RecordingFile — robust to all header versions. */
+    /**
+     * Parse a single CSV file into a RecordingFile.
+     * Reads header metadata only (first 30 lines) — safe for large files.
+     * Uses UTF-8 with replacement so non-UTF-8 bytes from older device locales
+     * do not throw a MalformedInputException.
+     */
     private fun parseRecordingFile(f: File, sessionId: String): RecordingFile? = try {
-        val lines = f.readLines()
-        // Rate: look for "Output rate:" first (v1.1+), fall back to "Hardware rate:"
-        val rate = lines.firstNotNullOfOrNull { line ->
-            when {
-                line.contains("Output rate:") ->
-                    line.substringAfter("Output rate:").trim().substringBefore(" Hz").substringBefore("\n").toIntOrNull()
-                line.contains("Hardware rate:") && !line.contains("Output rate:") ->
-                    line.substringAfter("Hardware rate:").trim().substringBefore(" Hz").substringBefore("\n").substringBefore("|").trim().toIntOrNull()
-                else -> null
+        if (!f.exists() || !f.canRead()) return null
+
+        var rate       = 0
+        var rows       = -1L
+        var sigName    = f.nameWithoutExtension
+        var sigUnit    = ""
+        var dataLines  = 0L
+
+        // Stream the file line by line; stop scanning metadata after 30 lines
+        // but continue counting data rows until EOF.
+        val charsetUTF8 = Charsets.UTF_8
+        f.bufferedReader(charsetUTF8).use { br ->
+            var lineNum = 0
+            var headerSeen = false
+            for (rawLine in br.lineSequence()) {
+                lineNum++
+                val line = rawLine.trim()
+                if (line.isEmpty()) continue
+
+                if (line.startsWith("#")) {
+                    // Only parse metadata from the first 30 comment lines
+                    if (lineNum <= 30) {
+                        when {
+                            line.contains("Output rate:") && rate == 0 ->
+                                rate = line.substringAfter("Output rate:").trim()
+                                    .substringBefore(" Hz").substringBefore("|").trim()
+                                    .toIntOrNull() ?: 0
+                            line.contains("Hardware rate:") && rate == 0 ->
+                                rate = line.substringAfter("Hardware rate:").trim()
+                                    .substringBefore(" Hz").substringBefore("|").trim()
+                                    .toIntOrNull() ?: 0
+                            line.startsWith("# Signal:") -> {
+                                sigName = line.substringAfter("# Signal:").trim()
+                                    .substringBefore("[").trim()
+                                    .ifBlank { f.nameWithoutExtension }
+                                sigUnit = line.substringAfter("[", "").substringBefore("]").trim()
+                            }
+                            line.startsWith("# Rows written:") ->
+                                rows = line.substringAfter(":").trim().toLongOrNull() ?: -1L
+                        }
+                    }
+                    continue
+                }
+
+                // First non-comment line is the CSV column header
+                if (!headerSeen) { headerSeen = true; continue }
+
+                // Count data rows (used only if "# Rows written:" not found)
+                dataLines++
             }
-        } ?: 0
-        // Rows written (v1.1+ footer) or count CSV data lines
-        val rows = lines.firstNotNullOfOrNull { line ->
-            if (line.startsWith("# Rows written:"))
-                line.substringAfter(":").trim().toLongOrNull()
-            else null
-        } ?: lines.count { !it.startsWith("#") && it.isNotBlank() && !it.startsWith("timestamp") }.toLong()
-        // Signal display name and unit from header
-        val sigName = lines.firstNotNullOfOrNull { line ->
-            if (line.startsWith("# Signal:")) line.substringAfter("# Signal:").trim().substringBefore("[").trim() else null
-        } ?: f.nameWithoutExtension
-        val sigUnit = lines.firstNotNullOfOrNull { line ->
-            if (line.startsWith("# Signal:")) line.substringAfter("[").substringBefore("]").trim() else null
-        } ?: ""
+        }
+
+        val rowCount = if (rows >= 0) rows else dataLines
+
         RecordingFile(
-            name = f.nameWithoutExtension,
-            path = f.absolutePath,
-            sizeBytes = f.length(),
-            lastModified = f.lastModified(),
+            name              = f.nameWithoutExtension,
+            path              = f.absolutePath,
+            sizeBytes         = f.length(),
+            lastModified      = f.lastModified(),
             signalDisplayName = sigName,
-            signalUnit = sigUnit,
-            rateHz = rate,
-            sessionId = sessionId,
-            rowCount = rows
+            signalUnit        = sigUnit,
+            rateHz            = rate,
+            sessionId         = sessionId,
+            rowCount          = rowCount
         )
-    } catch (_: Exception) { null }
+    } catch (e: Exception) {
+        AppLog.w("REC", "parseRecordingFile(${f.name}): ${e.javaClass.simpleName}: ${e.message}")
+        null
+    }
 
     // ─── Delete session directory ─────────────────────────────────────────────
     suspend fun deleteSession(sessionId: String): Boolean = withContext(Dispatchers.IO) {

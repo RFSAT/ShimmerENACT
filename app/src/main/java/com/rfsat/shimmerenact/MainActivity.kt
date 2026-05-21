@@ -72,10 +72,14 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                 ) {
                     NavigationBarItem(
                         selected = currentRoute == Screen.Home.route,
-                        onClick = { navController.navigate(Screen.Home.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true; restoreState = true
-                        }},
+                        onClick = {
+                            if (currentRoute != Screen.Home.route) {
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(0) { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
                         icon = { Icon(Icons.Default.Home, null) },
                         label = { Text("Sensors") },
                         colors = NavigationBarItemDefaults.colors(

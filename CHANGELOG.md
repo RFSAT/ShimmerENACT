@@ -2,6 +2,27 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v1.7.3
+
+### Fixed
+- Graph viewer: selected sample now marked with a filled contrast dot (dark fill,
+  green border) at the highlight position; dragging a pressed finger across the
+  chart continuously updates both the dot and the value readout row — achieved via
+  `OnChartGestureListener.onChartTranslate` calling `getHighlightByTouchPoint`
+- Graph viewer: CSV now read with `useLines(Charsets.UTF_8)` — explicit charset
+  prevents `MalformedInputException` on files written by older app versions on
+  devices whose default locale charset was not UTF-8
+- Recordings: `parseRecordingFile` rewritten as a streaming line reader — no longer
+  loads the entire file into memory with `readLines()`; reads only header metadata
+  and counts rows on the fly; reports `sizeBytes` and `rowCount` correctly for all
+  session files including those from earlier app versions
+- Sensors tab: tapping "Sensors" in the bottom nav now always navigates to the
+  Home screen, including when connected and viewing the Live/Dashboard screen;
+  the previous `saveState`/`restoreState` combination was restoring the Dashboard
+  back-stack entry instead of showing Home
+- README.md: version references updated to v1.7.3; `RecordingViewerScreen` added
+  to architecture diagram
+
 ## v1.7.2
 
 ### Fixed
