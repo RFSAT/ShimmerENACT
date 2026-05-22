@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.view.MotionEvent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*

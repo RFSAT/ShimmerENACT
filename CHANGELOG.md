@@ -2,6 +2,16 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.2.1
+
+### Fixed
+- **Compile error: `BorderStroke` unresolved reference (line 689)** —
+  `BorderStroke` is defined in `androidx.compose.foundation` (the top-level
+  package, not a subpackage). The existing wildcard imports covered
+  `androidx.compose.foundation.layout.*`, `androidx.compose.foundation.shape.*`
+  etc., but not the top-level package itself. Added
+  `import androidx.compose.foundation.BorderStroke`.
+
 ## v2.2.0
 
 ### Added
