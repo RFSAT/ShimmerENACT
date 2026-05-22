@@ -2,6 +2,26 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.1.2
+
+### Fixed
+- **Compile errors: `IGeoPoint` unresolved and `SimpleFastPointOverlay` generics** —
+  The v2.1.1 fix attempted to use `mutableListOf<org.osmdroid.util.IGeoPoint>` and
+  `ArrayList<org.osmdroid.util.IGeoPoint>` to satisfy `SimplePointTheme`'s constructor
+  signature. This failed because `IGeoPoint` lives in `org.osmdroid.api`, not
+  `org.osmdroid.util`, and because the Kotlin generic type argument was still not
+  accepted by the Java API. Root fix: **`SimpleFastPointOverlay` and `SimplePointTheme`
+  are removed entirely**. Cyan measurement dots and the red selection circle are now
+  drawn by two small custom `Overlay` subclasses (`DotsOverlay`, `SelectionOverlay`)
+  that paint directly onto the `Canvas` using `Projection.toPixels()` — no generics,
+  no external API contracts to satisfy.
+- **Compile error: `BoundingBox.fromGeoPoints` type mismatch** — `fromGeoPoints`
+  takes `List<GeoPoint>`, not `List<IGeoPoint>`. The cast
+  `geoPoints as List<IGeoPoint>` was incorrect and also used the wrong package.
+  Fixed by computing the bounding box directly from the min/max of the `GeoPoint`
+  latitude and longitude values and constructing
+  `BoundingBox(north, east, south, west)` explicitly.
+
 ## v2.1.1
 
 ### Fixed

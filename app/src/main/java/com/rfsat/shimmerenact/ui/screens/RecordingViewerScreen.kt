@@ -1,5 +1,6 @@
 package com.rfsat.shimmerenact.ui.screens
 
+import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.view.MotionEvent
@@ -35,14 +36,42 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.Projection
+import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.simplefastpoint.LabelledGeoPoint
-import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlay
-import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlayOptions
-import org.osmdroid.views.overlay.simplefastpoint.SimplePointTheme
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+
+// ── Custom overlay: draws a fixed-radius circle at every GPS point ─────────────
+// Avoids all SimpleFastPointOverlay / IGeoPoint generics issues.
+private class DotsOverlay(
+    private val points: List<GeoPoint>,
+    private val paint: Paint
+) : Overlay() {
+    private val reuse = android.graphics.Point()
+    override fun draw(canvas: Canvas, projection: Projection, shadow: Boolean) {
+        if (shadow) return
+        for (pt in points) {
+            projection.toPixels(pt, reuse)
+            canvas.drawCircle(reuse.x.toFloat(), reuse.y.toFloat(), 8f, paint)
+        }
+    }
+}
+
+// ── Custom overlay: draws a single larger circle (selected measurement) ────────
+private class SelectionOverlay(private val paint: Paint, private val ringPaint: Paint) : Overlay() {
+    var point: GeoPoint? = null
+    private val reuse = android.graphics.Point()
+    override fun draw(canvas: Canvas, projection: Projection, shadow: Boolean) {
+        if (shadow) return
+        val p = point ?: return
+        projection.toPixels(p, reuse)
+        val x = reuse.x.toFloat(); val y = reuse.y.toFloat()
+        canvas.drawCircle(x, y, 22f, ringPaint)
+        canvas.drawCircle(x, y, 16f, paint)
+    }
+}
 
 data class CsvPoint(
     val timestampMs: Long,
@@ -153,46 +182,26 @@ fun RecordingViewerScreen(
     val onSurfaceDimArgb = EnactOnSurfaceDim.toArgb()
     val bgArgb           = EnactDark.toArgb()
 
-    val chartRef = remember { mutableStateOf<LineChart?>(null) }
+    val chartRef       = remember { mutableStateOf<LineChart?>(null) }
+    val selOverlayRef  = remember { mutableStateOf<SelectionOverlay?>(null) }
+    val mapViewRef     = remember { mutableStateOf<MapView?>(null) }
 
-    // osmdroid MapView ref — used to move the selected-point marker
-    val mapViewRef    = remember { mutableStateOf<MapView?>(null) }
-    // The single-point overlay for the selected measurement (replaced on each selection)
-    val selOverlayRef = remember { mutableStateOf<SimpleFastPointOverlay?>(null) }
-
-    // ── Update selected-point marker on the map ────────────────────────────────
+    // ── Move selected-point marker on the map ──────────────────────────────────
     LaunchedEffect(selectedIndex) {
-        val mv = mapViewRef.value ?: return@LaunchedEffect
-        val sp = selectedPoint
-
-        // Remove previous selection overlay
-        selOverlayRef.value?.let { mv.overlays.remove(it) }
-        selOverlayRef.value = null
-
+        val mv  = mapViewRef.value ?: return@LaunchedEffect
+        val sel = selOverlayRef.value ?: return@LaunchedEffect
+        val sp  = selectedPoint
         if (sp?.latitude != null && sp.longitude != null) {
-            val pt    = GeoPoint(sp.latitude, sp.longitude)
-            val theme = SimplePointTheme(mutableListOf<org.osmdroid.util.IGeoPoint>(pt), false)
-            val opts  = SimpleFastPointOverlayOptions.getDefaultStyle().apply {
-                setAlgorithm(SimpleFastPointOverlayOptions.RenderingAlgorithm.NO_OPTIMIZATION)
-                setRadius(22f)
-                setIsClickable(false)
-                setPointStyle(Paint().apply {
-                    style     = Paint.Style.FILL
-                    color     = AndroidColor.rgb(220, 0, 0)
-                    isAntiAlias = true
-                })
-            }
-            val overlay = SimpleFastPointOverlay(theme, opts)
-            mv.overlays.add(overlay)
-            selOverlayRef.value = overlay
-            mv.controller.animateTo(pt)
-            mv.invalidate()
+            val gp = GeoPoint(sp.latitude, sp.longitude)
+            sel.point = gp
+            mv.controller.animateTo(gp)
         } else {
-            mv.invalidate()
+            sel.point = null
         }
+        mv.invalidate()
     }
 
-    // ── Push dataset to chart only when entries change (preserves zoom) ────────
+    // ── Push dataset to chart when entries change (preserves zoom) ─────────────
     LaunchedEffect(entries) {
         val chart = chartRef.value ?: return@LaunchedEffect
         if (entries.isEmpty()) { chart.data = null; chart.invalidate(); return@LaunchedEffect }
@@ -255,13 +264,8 @@ fun RecordingViewerScreen(
         containerColor = EnactDark
     ) { padding ->
 
-        // Non-scrollable outer Column — the map MUST be outside any scroll container,
-        // otherwise Compose measures it with infinite height → WebView/MapView gets 0px.
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-        ) {
+        // Non-scrollable outer Column so the MapView gets a proper measured height
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             when {
                 isLoading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -297,7 +301,7 @@ fun RecordingViewerScreen(
                 }
 
                 else -> {
-                    // Upper panel — stats + readout + chart, scrollable
+                    // Upper scrollable panel: stats + readout + chart
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -335,25 +339,19 @@ fun RecordingViewerScreen(
                                     Icon(Icons.Default.MyLocation, null,
                                         tint = EnactGreen, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        "t = ${timeFmt.format(Date(pt.timestampMs))}",
-                                        fontSize = 12.sp, color = EnactOnSurface,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    Text("t = ${timeFmt.format(Date(pt.timestampMs))}",
+                                        fontSize = 12.sp, color = EnactOnSurface, modifier = Modifier.weight(1f))
                                     Text(
                                         "%.6f".format(pt.value) +
-                                            if (recordingFile.signalUnit.isNotBlank())
-                                                "  ${recordingFile.signalUnit}" else "",
+                                            if (recordingFile.signalUnit.isNotBlank()) "  ${recordingFile.signalUnit}" else "",
                                         fontSize = 13.sp, color = EnactGreen, fontWeight = FontWeight.Bold
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text("#${selectedIndex + 1}", fontSize = 11.sp, color = EnactOnSurfaceDim)
                                 }
                             } else {
-                                Text(
-                                    "Tap or drag on graph to trace value",
-                                    fontSize = 12.sp, color = EnactOnSurfaceDim.copy(alpha = 0.4f)
-                                )
+                                Text("Tap or drag on graph to trace value",
+                                    fontSize = 12.sp, color = EnactOnSurfaceDim.copy(alpha = 0.4f))
                             }
                         }
 
@@ -371,10 +369,9 @@ fun RecordingViewerScreen(
                                     setDrawGridBackground(false)
                                     setTouchEnabled(true)
                                     isDragEnabled             = true
-                                    // Independent axis zoom: dominant gesture direction determines
-                                    // which axis is zoomed — horizontal → X, vertical → Y.
                                     isScaleXEnabled           = true
                                     isScaleYEnabled           = true
+                                    // Independent axis zoom: dominant gesture direction zooms only that axis
                                     setPinchZoom(false)
                                     setDrawMarkers(false)
                                     isHighlightPerDragEnabled = true
@@ -406,19 +403,19 @@ fun RecordingViewerScreen(
                                     axisRight.isEnabled = false
 
                                     // Custom renderer: large red circle on selected point
-                                    val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                        style = android.graphics.Paint.Style.FILL
+                                    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                        style = Paint.Style.FILL
                                         color = AndroidColor.rgb(220, 0, 0)
                                     }
-                                    val ringPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                        style       = android.graphics.Paint.Style.STROKE
+                                    val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                        style       = Paint.Style.STROKE
                                         color       = AndroidColor.WHITE
                                         strokeWidth = 3f
                                     }
                                     renderer = object : com.github.mikephil.charting.renderer.LineChartRenderer(
                                         this, animator, viewPortHandler
                                     ) {
-                                        override fun drawHighlighted(c: android.graphics.Canvas?, indices: Array<out Highlight>?) {
+                                        override fun drawHighlighted(c: Canvas?, indices: Array<out Highlight>?) {
                                             c ?: return; indices ?: return
                                             val data = mChart.data ?: return
                                             for (high in indices) {
@@ -467,8 +464,8 @@ fun RecordingViewerScreen(
                     } // end scrollable upper panel
 
                     // ── osmdroid Location Trace Map ───────────────────────────
-                    // Native MapView — no WebView, no JavaScript, no CDN.
-                    // Must be OUTSIDE the verticalScroll container (height constraint).
+                    // Fixed-height block OUTSIDE the scroll container so MapView
+                    // receives a proper measured height from the Android view system.
                     if (hasGps) {
                         Divider(color = EnactDarkMid, thickness = 1.dp)
                         Row(
@@ -481,11 +478,8 @@ fun RecordingViewerScreen(
                             Icon(Icons.Default.LocationOn, null,
                                 tint = EnactGreen, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(
-                                "LOCATION TRACE",
-                                fontSize = 10.sp, color = EnactOnSurfaceDim,
-                                letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold
-                            )
+                            Text("LOCATION TRACE", fontSize = 10.sp, color = EnactOnSurfaceDim,
+                                letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
                         }
 
                         AndroidView(
@@ -493,62 +487,71 @@ fun RecordingViewerScreen(
                                 .fillMaxWidth()
                                 .height(320.dp),
                             factory = { ctx ->
-                                // osmdroid requires the user-agent to be set before first use
                                 Configuration.getInstance().userAgentValue =
                                     "ShimmerENACT/2.0 (ENACT Project; Horizon Europe 101157151)"
 
+                                // Build GeoPoint list once
+                                val geoPoints = gpsPoints.map { GeoPoint(it.latitude!!, it.longitude!!) }
+
+                                // Paints created once in factory, reused on every draw
+                                val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                    style = Paint.Style.FILL
+                                    color = AndroidColor.rgb(0x00, 0xe5, 0xff)  // cyan
+                                }
+                                val selFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                    style = Paint.Style.FILL
+                                    color = AndroidColor.rgb(220, 0, 0)          // red
+                                }
+                                val selRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                    style       = Paint.Style.STROKE
+                                    color       = AndroidColor.WHITE
+                                    strokeWidth = 3f
+                                }
+
                                 MapView(ctx).apply {
-                                    setTileSource(TileSourceFactory.MAPNIK)  // standard OSM tiles
+                                    setTileSource(TileSourceFactory.MAPNIK)
                                     setMultiTouchControls(true)
                                     isClickable = true
 
-                                    // Build GeoPoint list for all GPS measurements
-                                    val geoPoints = gpsPoints.map { pt ->
-                                        GeoPoint(pt.latitude!!, pt.longitude!!)
-                                    }
-
-                                    // Cyan polyline connecting all measurement positions
+                                    // Cyan polyline
                                     val polyline = Polyline().apply {
                                         setPoints(geoPoints)
-                                        outlinePaint.color     = AndroidColor.rgb(0x00, 0xe5, 0xff)
-                                        outlinePaint.strokeWidth = 4f
-                                        outlinePaint.isAntiAlias = true
+                                        outlinePaint.color       = AndroidColor.rgb(0x00, 0xe5, 0xff)
+                                        outlinePaint.strokeWidth  = 4f
+                                        outlinePaint.isAntiAlias  = true
                                     }
                                     overlays.add(polyline)
 
-                                    // Cyan dots at every measurement position
-                                    val dotTheme = SimplePointTheme(
-                                        ArrayList<org.osmdroid.util.IGeoPoint>(geoPoints), false
-                                    )
-                                    val dotOpts = SimpleFastPointOverlayOptions.getDefaultStyle().apply {
-                                        setAlgorithm(SimpleFastPointOverlayOptions.RenderingAlgorithm.NO_OPTIMIZATION)
-                                        setRadius(8f)
-                                        setIsClickable(false)
-                                        setPointStyle(Paint().apply {
-                                            style       = Paint.Style.FILL
-                                            color       = AndroidColor.rgb(0x00, 0xe5, 0xff)
-                                            isAntiAlias = true
-                                        })
-                                    }
-                                    overlays.add(SimpleFastPointOverlay(dotTheme, dotOpts))
+                                    // Cyan dots — custom canvas overlay, no IGeoPoint generics
+                                    overlays.add(DotsOverlay(geoPoints, dotPaint))
 
-                                    // Centre and zoom to fit all points
+                                    // Red selection circle — canvas overlay, mutated via selOverlayRef
+                                    val selOverlay = SelectionOverlay(selFillPaint, selRingPaint)
+                                    overlays.add(selOverlay)
+                                    selOverlayRef.value = selOverlay
+
+                                    // Centre and fit view
                                     val centre = GeoPoint(
                                         gpsPoints.mapNotNull { it.latitude  }.average(),
                                         gpsPoints.mapNotNull { it.longitude }.average()
                                     )
                                     controller.setCenter(centre)
                                     controller.setZoom(16.0)
-                                    // Zoom to bounding box after layout
                                     post {
-                                        val box = org.osmdroid.util.BoundingBox.fromGeoPoints(geoPoints)
+                                        // Compute bounding box from raw lat/lon — avoids
+                                        // the IGeoPoint generic type mismatch.
+                                        val north = geoPoints.maxOf { it.latitude }
+                                        val south = geoPoints.minOf { it.latitude }
+                                        val east  = geoPoints.maxOf { it.longitude }
+                                        val west  = geoPoints.minOf { it.longitude }
+                                        val box = org.osmdroid.util.BoundingBox(north, east, south, west)
                                         zoomToBoundingBox(box, true, 40)
                                     }
 
                                     mapViewRef.value = this
                                 }
                             },
-                            update = { /* map content is static; selection driven via LaunchedEffect(selectedIndex) */ }
+                            update = { /* selection driven via LaunchedEffect(selectedIndex) */ }
                         )
                     }
                 }
