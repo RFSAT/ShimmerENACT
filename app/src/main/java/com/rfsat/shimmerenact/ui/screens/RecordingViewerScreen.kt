@@ -36,7 +36,6 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
-import org.osmdroid.views.Projection
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
 import java.io.File
@@ -50,8 +49,9 @@ private class DotsOverlay(
     private val paint: Paint
 ) : Overlay() {
     private val reuse = android.graphics.Point()
-    override fun draw(canvas: Canvas, projection: Projection, shadow: Boolean) {
+    override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
+        val projection = mapView.projection
         for (pt in points) {
             projection.toPixels(pt, reuse)
             canvas.drawCircle(reuse.x.toFloat(), reuse.y.toFloat(), 8f, paint)
@@ -63,9 +63,10 @@ private class DotsOverlay(
 private class SelectionOverlay(private val paint: Paint, private val ringPaint: Paint) : Overlay() {
     var point: GeoPoint? = null
     private val reuse = android.graphics.Point()
-    override fun draw(canvas: Canvas, projection: Projection, shadow: Boolean) {
+    override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
         val p = point ?: return
+        val projection = mapView.projection
         projection.toPixels(p, reuse)
         val x = reuse.x.toFloat(); val y = reuse.y.toFloat()
         canvas.drawCircle(x, y, 22f, ringPaint)

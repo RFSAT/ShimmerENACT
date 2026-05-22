@@ -2,6 +2,20 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.1.3
+
+### Fixed
+- **Compile error: wrong `Overlay.draw()` signature** — `DotsOverlay` and
+  `SelectionOverlay` overrode `draw(Canvas, Projection, Boolean)`, which does not
+  exist as an abstract method in `org.osmdroid.views.overlay.Overlay`. The correct
+  abstract method to override is `draw(Canvas, MapView, Boolean)`. Because the
+  wrong signature was used, the compiler saw a new non-abstract method rather than
+  an override, leaving the actual abstract `draw` unimplemented — making both
+  classes effectively abstract and preventing instantiation. Fixed by changing the
+  second parameter from `Projection` to `MapView` and obtaining the projection
+  inside the body via `mapView.projection`. The now-unused
+  `import org.osmdroid.views.Projection` is also removed.
+
 ## v2.1.2
 
 ### Fixed
