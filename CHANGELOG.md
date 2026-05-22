@@ -2,6 +2,30 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.0.2
+
+### Fixed
+- **Map: OSM tiles and Leaflet now render correctly** — two independent bugs caused
+  the location trace panel to remain blank:
+  1. *SRI integrity check failure* — `<link>` and `<script>` tags for Leaflet (loaded
+     from `unpkg.com`) carried `integrity=` SHA-256 hashes and `crossorigin=""`.
+     When `loadDataWithBaseURL` is used inside an Android `WebView`, the page is
+     served from a synthetic internal origin; the CORS preflight for the CDN resource
+     fails, the integrity check cannot be completed, and the browser silently refuses
+     to execute the script. Leaflet never initialised, leaving a blank `<div>`. Fix:
+     `integrity` and `crossorigin` attributes removed from both tags.
+  2. *Stale HTML captured in `factory` lambda* — `AndroidView.factory` is called
+     exactly once when the view enters the composition. The GPS data is loaded
+     asynchronously, so `gpsPoints` is empty when `factory` first runs; the HTML
+     computed at that moment contained no coordinates. By the time data arrived,
+     `factory` was never called again. Fix: HTML is now built in
+     `LaunchedEffect(gpsPoints)` and stored in a `MutableState<String>`
+     (`osmHtmlState`). The `update` lambda — which runs on every recompose — reads
+     the current value and calls `loadDataWithBaseURL` whenever the content changes
+     (guarded by a `tag`-based hash to prevent redundant reloads).
+- **Map: cyan measurement dots now fully filled** — `fillOpacity` raised from `0.7`
+  to `1.0` so every dot is solid cyan with no transparency.
+
 ## v2.0.1
 
 ### Fixed

@@ -159,6 +159,18 @@ fun RecordingViewerScreen(
     // WebView ref for JS-driven map updates
     val mapWebView = remember { mutableStateOf<WebView?>(null) }
 
+    // OSM HTML state — built once per GPS dataset, held in MutableState so the
+    // WebView update lambda can always read the current value. factory() is called
+    // only once by Compose; update() runs on every recompose, so we load HTML there.
+    val osmHtmlState = remember { mutableStateOf("") }
+    LaunchedEffect(gpsPoints) {
+        if (gpsPoints.isEmpty()) return@LaunchedEffect
+        val coordsJson = gpsPoints.joinToString(",") { "[${it.latitude},${it.longitude}]" }
+        val centLat    = gpsPoints.mapNotNull { it.latitude  }.average()
+        val centLon    = gpsPoints.mapNotNull { it.longitude }.average()
+        osmHtmlState.value = buildOsmHtml(centLat, centLon, coordsJson)
+    }
+
     // ── Push selected-point marker to map ──────────────────────────────────────
     // Runs whenever selectedIndex changes — does NOT trigger a chart recomposition.
     LaunchedEffect(selectedIndex) {
@@ -505,13 +517,6 @@ fun RecordingViewerScreen(
                             modifier   = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
 
-                        val coordsJson = remember(gpsPoints) {
-                            gpsPoints.joinToString(",") { "[${it.latitude},${it.longitude}]" }
-                        }
-                        val centLat = remember(gpsPoints) { gpsPoints.mapNotNull { it.latitude }.average() }
-                        val centLon = remember(gpsPoints) { gpsPoints.mapNotNull { it.longitude }.average() }
-                        val osmHtml = remember(gpsPoints) { buildOsmHtml(centLat, centLon, coordsJson) }
-
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -520,37 +525,37 @@ fun RecordingViewerScreen(
                             factory = { ctx ->
                                 WebView(ctx).apply {
                                     settings.apply {
-                                        javaScriptEnabled   = true
-                                        domStorageEnabled   = true
-                                        // Allow https CDN resources (Leaflet, OSM tiles) to load
-                                        // when the base URL is an https origin.
-                                        mixedContentMode    = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                        cacheMode           = WebSettings.LOAD_DEFAULT
+                                        javaScriptEnabled    = true
+                                        domStorageEnabled    = true
+                                        mixedContentMode     = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                        cacheMode            = WebSettings.LOAD_DEFAULT
                                         setSupportZoom(true)
-                                        builtInZoomControls = true
-                                        displayZoomControls = false
-                                        useWideViewPort     = true
+                                        builtInZoomControls  = true
+                                        displayZoomControls  = false
+                                        useWideViewPort      = true
                                         loadWithOverviewMode = true
                                     }
                                     webViewClient = WebViewClient()
-                                    // Use dark background colour matching the app — avoids
-                                    // a white flash before tiles load.
                                     setBackgroundColor(AndroidColor.rgb(0x1a, 0x1f, 0x1a))
-
-                                    // Base URL must be an https origin so the WebView security
-                                    // context permits loading Leaflet from unpkg.com and tiles
-                                    // from tile.openstreetmap.org.
-                                    loadDataWithBaseURL(
+                                    mapWebView.value = this
+                                }
+                            },
+                            update = { wv ->
+                                // update() runs on every recompose, so it always has the
+                                // current osmHtmlState value — load only when non-empty and
+                                // only when the content has actually changed.
+                                val html = osmHtmlState.value
+                                if (html.isNotEmpty() && wv.tag != html.hashCode()) {
+                                    wv.tag = html.hashCode()
+                                    wv.loadDataWithBaseURL(
                                         "https://www.openstreetmap.org/",
-                                        osmHtml,
+                                        html,
                                         "text/html",
                                         "UTF-8",
                                         null
                                     )
-                                    mapWebView.value = this
                                 }
-                            },
-                            update = { /* driven via JS in LaunchedEffect(selectedIndex) */ }
+                            }
                         )
                     }
                 }
@@ -566,10 +571,8 @@ private fun buildOsmHtml(centLat: Double, centLon: Double, coordsJson: String): 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN2GKGs=" crossorigin=""></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   html, body, #map {
     margin: 0; padding: 0;
@@ -603,7 +606,7 @@ private fun buildOsmHtml(centLat: Double, centLon: Double, coordsJson: String): 
   coords.forEach(function(c) {
     L.circleMarker(c, {
       radius: 3, color: '#00e5ff',
-      fillColor: '#00e5ff', fillOpacity: 0.7, weight: 1
+      fillColor: '#00e5ff', fillOpacity: 1.0, weight: 1
     }).addTo(map);
   });
 
