@@ -2,6 +2,35 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.1.4
+
+### Fixed
+- **Map resizes and overlaps graph on pan or selection change** — two root causes:
+
+  1. *`MapView.requestLayout()` escaping into Compose* — osmdroid calls
+     `requestLayout()` (not just `invalidate()`) every time it redraws: on tile
+     load, pan, zoom, and overlay invalidation. This propagated through the Android
+     view hierarchy into Compose's layout pass, causing the `AndroidView` to be
+     remeasured. During remeasurement `MapView.onMeasure()` could return a size
+     different from what Compose originally allocated, making the map grow or shrink
+     and push the graph out of place. Fixed with two measures:
+     - `height(320.dp)` replaced by `requiredHeight(320.dp)` — Compose's
+       `requiredHeight` sets `MeasureSpec.EXACTLY` on the child and ignores the
+       child's reported desired size, so whatever `MapView.onMeasure()` returns is
+       discarded.
+     - `MapView` wrapped in an anonymous subclass that overrides `onMeasure` to
+       always call `setMeasuredDimension` with the spec's exact size — a belt-and-
+       braces guard ensuring the size is locked even if Compose's modifier alone
+       is insufficient.
+
+  2. *Cursor readout row changing height on selection* — the value readout `Box`
+     switched between a one-line placeholder and a one-line data row, but the two
+     had different intrinsic heights due to icon/text padding differences. This
+     caused the scrollable upper panel to change height, which re-triggered the
+     outer Column's layout pass and shifted the map block. Fixed by giving the
+     readout `Box` a fixed `height(36.dp)` so it is always the same size regardless
+     of whether a point is selected.
+
 ## v2.1.3
 
 ### Fixed

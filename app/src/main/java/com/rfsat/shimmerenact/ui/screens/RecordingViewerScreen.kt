@@ -329,6 +329,7 @@ fun RecordingViewerScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .height(36.dp)   // fixed height — prevents layout shift on selection change
                                 .background(
                                     if (selectedPoint != null) EnactGreen.copy(alpha = 0.10f) else EnactDark
                                 )
@@ -486,7 +487,7 @@ fun RecordingViewerScreen(
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(320.dp),
+                                .requiredHeight(320.dp),
                             factory = { ctx ->
                                 Configuration.getInstance().userAgentValue =
                                     "ShimmerENACT/2.0 (ENACT Project; Horizon Europe 101157151)"
@@ -509,7 +510,22 @@ fun RecordingViewerScreen(
                                     strokeWidth = 3f
                                 }
 
-                                MapView(ctx).apply {
+                                // Subclass MapView to lock its measured size to exactly
+                                // what Compose assigned. Without this, osmdroid calls
+                                // requestLayout() on pan/tile-load/selection which causes
+                                // the Android view system to remeasure the MapView and
+                                // return a different height, making the map grow or shrink.
+                                object : MapView(ctx) {
+                                    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                                        // Always honour the exact spec Compose passed in.
+                                        // MeasureSpec.EXACTLY is always set by requiredHeight.
+                                        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+                                        setMeasuredDimension(
+                                            android.view.View.MeasureSpec.getSize(widthMeasureSpec),
+                                            android.view.View.MeasureSpec.getSize(heightMeasureSpec)
+                                        )
+                                    }
+                                }.apply {
                                     setTileSource(TileSourceFactory.MAPNIK)
                                     setMultiTouchControls(true)
                                     isClickable = true
