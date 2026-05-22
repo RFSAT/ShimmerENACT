@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -195,7 +196,7 @@ fun RecordingViewerScreen(
         if (sp?.latitude != null && sp.longitude != null) {
             val gp = GeoPoint(sp.latitude, sp.longitude)
             sel.point = gp
-            mv.controller.animateTo(gp)
+            mv.controller.setCenter(gp)   // instant — avoids repeated requestLayout during animation
         } else {
             sel.point = null
         }
@@ -484,25 +485,31 @@ fun RecordingViewerScreen(
                                 letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
                         }
 
-                        AndroidView(
+                        // Wrap MapView in a size-locked, clipped Box.
+                        // requiredHeight + clipToBounds ensures osmdroid can never
+                        // paint or resize beyond the allocated 320 dp, regardless
+                        // of how many requestLayout() calls it makes internally.
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .requiredHeight(320.dp),
+                                .requiredHeight(320.dp)
+                                .clipToBounds()
+                        ) {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
                             factory = { ctx ->
                                 Configuration.getInstance().userAgentValue =
                                     "ShimmerENACT/2.0 (ENACT Project; Horizon Europe 101157151)"
 
-                                // Build GeoPoint list once
                                 val geoPoints = gpsPoints.map { GeoPoint(it.latitude!!, it.longitude!!) }
 
-                                // Paints created once in factory, reused on every draw
                                 val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                     style = Paint.Style.FILL
-                                    color = AndroidColor.rgb(0x00, 0xe5, 0xff)  // cyan
+                                    color = AndroidColor.rgb(0x00, 0xe5, 0xff)
                                 }
                                 val selFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                     style = Paint.Style.FILL
-                                    color = AndroidColor.rgb(220, 0, 0)          // red
+                                    color = AndroidColor.rgb(220, 0, 0)
                                 }
                                 val selRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                     style       = Paint.Style.STROKE
@@ -510,22 +517,7 @@ fun RecordingViewerScreen(
                                     strokeWidth = 3f
                                 }
 
-                                // Subclass MapView to lock its measured size to exactly
-                                // what Compose assigned. Without this, osmdroid calls
-                                // requestLayout() on pan/tile-load/selection which causes
-                                // the Android view system to remeasure the MapView and
-                                // return a different height, making the map grow or shrink.
-                                object : MapView(ctx) {
-                                    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                                        // Always honour the exact spec Compose passed in.
-                                        // MeasureSpec.EXACTLY is always set by requiredHeight.
-                                        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-                                        setMeasuredDimension(
-                                            android.view.View.MeasureSpec.getSize(widthMeasureSpec),
-                                            android.view.View.MeasureSpec.getSize(heightMeasureSpec)
-                                        )
-                                    }
-                                }.apply {
+                                MapView(ctx).apply {
                                     setTileSource(TileSourceFactory.MAPNIK)
                                     setMultiTouchControls(true)
                                     isClickable = true
@@ -570,6 +562,7 @@ fun RecordingViewerScreen(
                             },
                             update = { /* selection driven via LaunchedEffect(selectedIndex) */ }
                         )
+                        } // end clipped Box
                     }
                 }
             }

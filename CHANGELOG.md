@@ -2,6 +2,86 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.1.6
+
+### Fixed
+- **Sensor not reading data in release build (regression introduced in v2.1.0)** —
+  Adding `osmdroid` as a dependency introduced two ProGuard/R8 issues that caused
+  the release APK to malfunction at startup:
+
+  1. *osmdroid ContentProvider crash at startup* — osmdroid declares
+     `OpenStreetMapTilesProvider` (a `ContentProvider`) in its AAR manifest, which
+     is merged into the app's `AndroidManifest.xml` at build time. R8 minification
+     in the release build stripped and renamed osmdroid's internal classes because
+     no keep rule was present. The merged manifest still referenced the original
+     class names, causing a `ClassNotFoundException` when Android tried to
+     instantiate the `ContentProvider` during `Application` initialisation —
+     before any app code ran. This crash prevented the entire app from starting
+     correctly, including Bluetooth sensor connectivity.
+
+  2. *Shimmer coroutine lambdas mangled by R8* — `ShimmerBluetoothManager` and
+     `ShimmerViewModel` use Kotlin coroutine lambdas and anonymous inner classes
+     whose names R8 can mangle when no keep rule is present. This broke the
+     Bluetooth streaming coroutine even if the startup crash was somehow bypassed.
+
+  **Fix:** Added the following keep rules to `proguard-rules.pro`:
+  ```
+  -keep class org.osmdroid.** { *; }
+  -dontwarn org.osmdroid.**
+  -keep class com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager { *; }
+  -keep class com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager$* { *; }
+  -keep class com.rfsat.shimmerenact.viewmodel.ShimmerViewModel { *; }
+  -keep class com.rfsat.shimmerenact.viewmodel.ShimmerViewModel$* { *; }
+  ```
+
+  Note: the v2.1.5 fixes for map layout stability and permission refresh are
+  also included in this release unchanged.
+
+## v2.1.5
+
+### Fixed
+- **Map moves over graph and location marker appears outside map bounds** —
+  three separate root causes addressed:
+
+  1. *`animateTo` causing repeated `requestLayout` during pan animation* —
+     `controller.animateTo()` produces a smooth pan animation over multiple
+     frames; on each frame osmdroid calls `requestLayout()`, which Compose
+     intercepts and re-runs the layout pass, shifting the map block relative
+     to the graph above it. Replaced with `controller.setCenter()` which
+     repositions the viewport instantly with a single layout pass.
+
+  2. *`MapView` painting outside its allocated area* — osmdroid's tile and
+     overlay rendering can draw beyond the view's logical bounds during a
+     viewport transition. Wrapped the `AndroidView` in a `Box` with
+     `requiredHeight(320.dp)` and `clipToBounds()`. `clipToBounds()` sets
+     `View.setClipChildren(true)` / `View.setClipToOutline(true)` on the
+     Compose layer so no pixel from the `MapView` can appear outside the
+     320 dp box regardless of what the osmdroid renderer draws.
+     The `AndroidView` inside the Box uses `fillMaxSize()` so it fills the
+     Box exactly.
+
+  3. *`onMeasure` override removed* — the override added in v2.1.4 was
+     redundant once the Box with `clipToBounds` was in place, and it
+     introduced a subtle issue: forcing `MeasureSpec.getSize()` as the exact
+     dimension caused the `MapView` to report zero size on first layout
+     when Compose passed `MeasureSpec.UNSPECIFIED` during the initial measure.
+     Removed; `requiredHeight` + `clipToBounds` is sufficient.
+
+- **Storage permission banner not dismissed after granting (API 30+)** —
+  `hasStorageAccess` was computed as a plain `val` using
+  `Environment.isExternalStorageManager()`, which is a one-shot snapshot.
+  When the user navigated to the system Settings page to grant all-files
+  access and then returned to the app, the composable was not recomposed
+  (no state change triggered it), so the banner remained visible. Fixed by:
+  - Making `hasStorageAccess` a `mutableStateOf` variable
+  - Adding a `DisposableEffect` that registers a `LifecycleEventObserver`
+    on the screen's lifecycle owner
+  - On every `ON_RESUME` event (including return from Settings), the observer
+    re-evaluates the permission and updates `hasStorageAccess`, which
+    triggers recomposition and dismisses the banner automatically.
+  This also covers the `READ_EXTERNAL_STORAGE` path (API ≤ 32) via the same
+  observer, making the refresh path uniform across all API levels.
+
 ## v2.1.4
 
 ### Fixed

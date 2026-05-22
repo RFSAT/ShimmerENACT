@@ -37,3 +37,15 @@
 -keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite {
     <fields>;
 }
+
+# osmdroid — tile provider uses reflection; ContentProvider registered in merged
+# manifest must not be stripped or renamed by R8.
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**
+
+# ShimmerBluetoothManager — coroutine lambdas and inner classes must be kept
+# so R8 does not mangle names referenced from the ViewModel coroutine scope.
+-keep class com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager { *; }
+-keep class com.rfsat.shimmerenact.data.bluetooth.ShimmerBluetoothManager$* { *; }
+-keep class com.rfsat.shimmerenact.viewmodel.ShimmerViewModel { *; }
+-keep class com.rfsat.shimmerenact.viewmodel.ShimmerViewModel$* { *; }

@@ -16,6 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -59,16 +62,41 @@ fun RecordingsScreen(
         rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
     } else null
 
-    // Determine whether we currently have sufficient storage access
-    val hasStorageAccess = when {
-        needsLegacyRead -> readPermState?.status?.isGranted == true
-        needsManage     -> Environment.isExternalStorageManager()
-        else            -> true
+    // hasStorageAccess must be a mutableState so it is recomputed on every
+    // ON_RESUME event. On API 30+, isExternalStorageManager() is the only
+    // reliable way to check the permission, but it returns a snapshot value —
+    // it does not trigger recomposition by itself when the user grants the
+    // permission in the system Settings page and then returns to the app.
+    // Without observing ON_RESUME, the banner stays on screen forever even
+    // after the permission is granted.
+    var hasStorageAccess by remember {
+        mutableStateOf(
+            when {
+                needsLegacyRead -> readPermState?.status?.isGranted == true
+                needsManage     -> Environment.isExternalStorageManager()
+                else            -> true
+            }
+        )
     }
 
-    // Refresh sessions whenever storage access state changes or screen is entered
-    LaunchedEffect(hasStorageAccess) {
-        if (hasStorageAccess) viewModel.refreshSessions()
+    // Re-evaluate permission and refresh sessions on every resume.
+    // This catches the return from the system Settings page (API 30+) and
+    // the accompanist permission grant callback (API ≤ 32).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val newAccess = when {
+                    needsLegacyRead -> readPermState?.status?.isGranted == true
+                    needsManage     -> Environment.isExternalStorageManager()
+                    else            -> true
+                }
+                hasStorageAccess = newAccess
+                if (newAccess) viewModel.refreshSessions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var deleteTarget by remember { mutableStateOf<RecordingSession?>(null) }
