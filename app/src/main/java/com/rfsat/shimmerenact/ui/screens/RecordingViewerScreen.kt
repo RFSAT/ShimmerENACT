@@ -1,10 +1,8 @@
 package com.rfsat.shimmerenact.ui.screens
 
 import android.graphics.Color as AndroidColor
+import android.graphics.Paint
 import android.view.MotionEvent
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebSettings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +31,15 @@ import com.rfsat.shimmerenact.data.repository.RecordingFile
 import com.rfsat.shimmerenact.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.simplefastpoint.LabelledGeoPoint
+import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlay
+import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlayOptions
+import org.osmdroid.views.overlay.simplefastpoint.SimplePointTheme
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -49,6 +57,8 @@ fun RecordingViewerScreen(
     recordingFile: RecordingFile,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+
     var points        by remember { mutableStateOf<List<CsvPoint>>(emptyList()) }
     var loadError     by remember { mutableStateOf<String?>(null) }
     var isLoading     by remember { mutableStateOf(true) }
@@ -100,18 +110,14 @@ fun RecordingViewerScreen(
                         }
                         val cols = line.split(",")
                         if (cols.size <= valCol) continue
-
                         val tsMs: Long = (
-                            if (tsCol >= 0) cols.getOrNull(tsCol)?.trim()?.toLongOrNull()
-                            else null
+                            if (tsCol >= 0) cols.getOrNull(tsCol)?.trim()?.toLongOrNull() else null
                         ) ?: cols.getOrNull(0)?.trim()?.let { iso ->
                             runCatching { isoFmt.parse(iso)?.time }.getOrNull()
                         } ?: continue
-
                         val v   = cols.getOrNull(valCol)?.trim()?.toDoubleOrNull() ?: continue
                         val lat = if (latCol >= 0) cols.getOrNull(latCol)?.trim()?.toDoubleOrNull() else null
                         val lon = if (lonCol >= 0) cols.getOrNull(lonCol)?.trim()?.toDoubleOrNull() else null
-
                         result.add(CsvPoint(tsMs, v, lat, lon))
                     }
                 }
@@ -128,43 +134,61 @@ fun RecordingViewerScreen(
     // ── Derived state ──────────────────────────────────────────────────────────
     val stats = remember(points) {
         if (points.isEmpty()) null
-        else {
-            val values = points.map { it.value }
-            Triple(values.min(), values.average(), values.max())
-        }
+        else { val v = points.map { it.value }; Triple(v.min(), v.average(), v.max()) }
     }
 
     val entries = remember(points) {
         if (points.isEmpty()) emptyList()
         else {
             val t0 = points.first().timestampMs
-            points.mapIndexed { i, pt ->
-                Entry((pt.timestampMs - t0) / 1000f, pt.value.toFloat(), i)
-            }
+            points.mapIndexed { i, pt -> Entry((pt.timestampMs - t0) / 1000f, pt.value.toFloat(), i) }
         }
     }
 
-    val gpsPoints = remember(points) {
-        points.filter { it.latitude != null && it.longitude != null }
-    }
-    val hasGps = gpsPoints.isNotEmpty()
+    val gpsPoints = remember(points) { points.filter { it.latitude != null && it.longitude != null } }
+    val hasGps    = gpsPoints.isNotEmpty()
 
     // Stable ARGB colours
     val accentArgb       = EnactGreen.toArgb()
     val onSurfaceDimArgb = EnactOnSurfaceDim.toArgb()
     val bgArgb           = EnactDark.toArgb()
 
-    val chartRef   = remember { mutableStateOf<LineChart?>(null) }
-    val mapWebView = remember { mutableStateOf<WebView?>(null) }
+    val chartRef = remember { mutableStateOf<LineChart?>(null) }
 
-    // ── Push selected marker to map via JS ─────────────────────────────────────
+    // osmdroid MapView ref — used to move the selected-point marker
+    val mapViewRef    = remember { mutableStateOf<MapView?>(null) }
+    // The single-point overlay for the selected measurement (replaced on each selection)
+    val selOverlayRef = remember { mutableStateOf<SimpleFastPointOverlay?>(null) }
+
+    // ── Update selected-point marker on the map ────────────────────────────────
     LaunchedEffect(selectedIndex) {
-        val wv = mapWebView.value ?: return@LaunchedEffect
+        val mv = mapViewRef.value ?: return@LaunchedEffect
         val sp = selectedPoint
+
+        // Remove previous selection overlay
+        selOverlayRef.value?.let { mv.overlays.remove(it) }
+        selOverlayRef.value = null
+
         if (sp?.latitude != null && sp.longitude != null) {
-            wv.post { wv.evaluateJavascript("moveSelected(${sp.latitude},${sp.longitude});", null) }
+            val pt    = GeoPoint(sp.latitude, sp.longitude)
+            val theme = SimplePointTheme(mutableListOf(pt), false)
+            val opts  = SimpleFastPointOverlayOptions.getDefaultStyle().apply {
+                setAlgorithm(SimpleFastPointOverlayOptions.RenderingAlgorithm.NO_OPTIMIZATION)
+                setRadius(22f)
+                setIsClickable(false)
+                setPointStyle(Paint().apply {
+                    style     = Paint.Style.FILL
+                    color     = AndroidColor.rgb(220, 0, 0)
+                    isAntiAlias = true
+                })
+            }
+            val overlay = SimpleFastPointOverlay(theme, opts)
+            mv.overlays.add(overlay)
+            selOverlayRef.value = overlay
+            mv.controller.animateTo(pt)
+            mv.invalidate()
         } else {
-            wv.post { wv.evaluateJavascript("clearSelected();", null) }
+            mv.invalidate()
         }
     }
 
@@ -199,19 +223,6 @@ fun RecordingViewerScreen(
         chart.invalidate()
     }
 
-    // ── Build the OSM HTML once when GPS points are available ──────────────────
-    // Leaflet JS+CSS are inlined so there are zero external dependencies —
-    // no CDN, no CORS, no network required for the map to render.
-    val osmHtml = remember(gpsPoints) {
-        if (gpsPoints.isEmpty()) ""
-        else {
-            val coordsJson = gpsPoints.joinToString(",") { "[${it.latitude},${it.longitude}]" }
-            val centLat    = gpsPoints.mapNotNull { it.latitude  }.average()
-            val centLon    = gpsPoints.mapNotNull { it.longitude }.average()
-            buildOsmHtml(centLat, centLon, coordsJson)
-        }
-    }
-
     // ── Scaffold ───────────────────────────────────────────────────────────────
     Scaffold(
         topBar = {
@@ -236,9 +247,7 @@ fun RecordingViewerScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = EnactGreen)
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = EnactGreen) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = EnactDarkMid)
             )
@@ -246,11 +255,8 @@ fun RecordingViewerScreen(
         containerColor = EnactDark
     ) { padding ->
 
-        // ── Outer column: fills the screen, NOT scrollable ─────────────────────
-        // The chart panel scrolls internally; the map is a fixed-height block below.
-        // We must NOT wrap both in verticalScroll because WebView inside an infinite-
-        // height scroll container gets measured with zero height by the Android view
-        // system and renders nothing.
+        // Non-scrollable outer Column — the map MUST be outside any scroll container,
+        // otherwise Compose measures it with infinite height → WebView/MapView gets 0px.
         Column(
             modifier = Modifier
                 .padding(padding)
@@ -268,16 +274,11 @@ fun RecordingViewerScreen(
                 }
 
                 loadError != null -> {
-                    Box(
-                        Modifier.fillMaxSize().padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.ErrorOutline, null,
-                                tint = EnactError, modifier = Modifier.size(48.dp))
+                            Icon(Icons.Default.ErrorOutline, null, tint = EnactError, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(12.dp))
-                            Text("Failed to load recording",
-                                color = EnactError, fontWeight = FontWeight.SemiBold)
+                            Text("Failed to load recording", color = EnactError, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(4.dp))
                             Text(loadError ?: "", color = EnactOnSurfaceDim, fontSize = 12.sp)
                         }
@@ -288,8 +289,7 @@ fun RecordingViewerScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.BarChart, null,
-                                tint = EnactGreen.copy(alpha = 0.3f),
-                                modifier = Modifier.size(56.dp))
+                                tint = EnactGreen.copy(alpha = 0.3f), modifier = Modifier.size(56.dp))
                             Spacer(Modifier.height(12.dp))
                             Text("No data in file", color = EnactOnSurfaceDim)
                         }
@@ -297,9 +297,7 @@ fun RecordingViewerScreen(
                 }
 
                 else -> {
-
-                    // ── Upper panel: stats + readout + chart (scrollable) ──────
-                    // weight(1f) gives it all remaining space above the map.
+                    // Upper panel — stats + readout + chart, scrollable
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -327,8 +325,7 @@ fun RecordingViewerScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (selectedPoint != null) EnactGreen.copy(alpha = 0.10f)
-                                    else EnactDark
+                                    if (selectedPoint != null) EnactGreen.copy(alpha = 0.10f) else EnactDark
                                 )
                                 .padding(horizontal = 16.dp, vertical = 6.dp)
                         ) {
@@ -347,20 +344,15 @@ fun RecordingViewerScreen(
                                         "%.6f".format(pt.value) +
                                             if (recordingFile.signalUnit.isNotBlank())
                                                 "  ${recordingFile.signalUnit}" else "",
-                                        fontSize = 13.sp, color = EnactGreen,
-                                        fontWeight = FontWeight.Bold
+                                        fontSize = 13.sp, color = EnactGreen, fontWeight = FontWeight.Bold
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "#${selectedIndex + 1}",
-                                        fontSize = 11.sp, color = EnactOnSurfaceDim
-                                    )
+                                    Text("#${selectedIndex + 1}", fontSize = 11.sp, color = EnactOnSurfaceDim)
                                 }
                             } else {
                                 Text(
                                     "Tap or drag on graph to trace value",
-                                    fontSize = 12.sp,
-                                    color = EnactOnSurfaceDim.copy(alpha = 0.4f)
+                                    fontSize = 12.sp, color = EnactOnSurfaceDim.copy(alpha = 0.4f)
                                 )
                             }
                         }
@@ -379,9 +371,8 @@ fun RecordingViewerScreen(
                                     setDrawGridBackground(false)
                                     setTouchEnabled(true)
                                     isDragEnabled             = true
-                                    // Independent X/Y zoom: setPinchZoom(false) means a
-                                    // predominantly-horizontal two-finger spread zooms X only;
-                                    // a predominantly-vertical spread zooms Y only.
+                                    // Independent axis zoom: dominant gesture direction determines
+                                    // which axis is zoomed — horizontal → X, vertical → Y.
                                     isScaleXEnabled           = true
                                     isScaleYEnabled           = true
                                     setPinchZoom(false)
@@ -414,7 +405,7 @@ fun RecordingViewerScreen(
                                     }
                                     axisRight.isEnabled = false
 
-                                    // ── Custom renderer: large red circle on selected point ──
+                                    // Custom renderer: large red circle on selected point
                                     val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                                         style = android.graphics.Paint.Style.FILL
                                         color = AndroidColor.rgb(220, 0, 0)
@@ -427,10 +418,7 @@ fun RecordingViewerScreen(
                                     renderer = object : com.github.mikephil.charting.renderer.LineChartRenderer(
                                         this, animator, viewPortHandler
                                     ) {
-                                        override fun drawHighlighted(
-                                            c: android.graphics.Canvas?,
-                                            indices: Array<out Highlight>?
-                                        ) {
+                                        override fun drawHighlighted(c: android.graphics.Canvas?, indices: Array<out Highlight>?) {
                                             c ?: return; indices ?: return
                                             val data = mChart.data ?: return
                                             for (high in indices) {
@@ -438,8 +426,7 @@ fun RecordingViewerScreen(
                                                 val e   = data.getEntryForHighlight(high) ?: continue
                                                 val pix = mChart.getTransformer(set.axisDependency)
                                                               .getPixelForValues(e.x, e.y)
-                                                val x = pix.x.toFloat()
-                                                val y = pix.y.toFloat()
+                                                val x = pix.x.toFloat(); val y = pix.y.toFloat()
                                                 c.drawCircle(x, y, 22f, ringPaint)
                                                 c.drawCircle(x, y, 18f, fillPaint)
                                             }
@@ -449,13 +436,9 @@ fun RecordingViewerScreen(
                                     setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
                                         override fun onValueSelected(e: Entry?, h: Highlight?) {
                                             val idx = e?.data as? Int ?: return
-                                            if (idx in points.indices) {
-                                                selectedPoint = points[idx]; selectedIndex = idx
-                                            }
+                                            if (idx in points.indices) { selectedPoint = points[idx]; selectedIndex = idx }
                                         }
-                                        override fun onNothingSelected() {
-                                            selectedPoint = null; selectedIndex = -1
-                                        }
+                                        override fun onNothingSelected() { selectedPoint = null; selectedIndex = -1 }
                                     })
 
                                     onChartGestureListener = object : OnChartGestureListener {
@@ -472,13 +455,10 @@ fun RecordingViewerScreen(
                                             if (h != null) {
                                                 highlightValue(h, false)
                                                 val idx = data?.getEntryForHighlight(h)?.data as? Int ?: return
-                                                if (idx in points.indices) {
-                                                    selectedPoint = points[idx]; selectedIndex = idx
-                                                }
+                                                if (idx in points.indices) { selectedPoint = points[idx]; selectedIndex = idx }
                                             }
                                         }
                                     }
-
                                     chartRef.value = this
                                 }
                             },
@@ -486,13 +466,11 @@ fun RecordingViewerScreen(
                         )
                     } // end scrollable upper panel
 
-                    // ── OSM Location Trace Map — fixed height, outside the scroller ─
-                    // The WebView MUST be outside the verticalScroll container.
-                    // Inside a scroll container, children are measured with infinite
-                    // height; the Android view system then gives the WebView zero
-                    // actual pixels and it renders nothing.
+                    // ── osmdroid Location Trace Map ───────────────────────────
+                    // Native MapView — no WebView, no JavaScript, no CDN.
+                    // Must be OUTSIDE the verticalScroll container (height constraint).
                     if (hasGps) {
-                        Divider(color = EnactDarkMid, thickness = 1.dp)
+                        HorizontalDivider(color = EnactDarkMid, thickness = 1.dp)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -513,38 +491,64 @@ fun RecordingViewerScreen(
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(320.dp),   // explicit fixed height — required outside a scroller
+                                .height(320.dp),
                             factory = { ctx ->
-                                WebView(ctx).also { wv ->
-                                    wv.settings.apply {
-                                        javaScriptEnabled    = true
-                                        domStorageEnabled    = true
-                                        // MIXED_CONTENT_ALWAYS_ALLOW lets the WebView load
-                                        // OSM tile images (https) alongside the inline HTML.
-                                        mixedContentMode     = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                        cacheMode            = WebSettings.LOAD_DEFAULT
-                                        setSupportZoom(true)
-                                        builtInZoomControls  = true
-                                        displayZoomControls  = false
-                                        useWideViewPort      = true
-                                        loadWithOverviewMode = true
+                                // osmdroid requires the user-agent to be set before first use
+                                Configuration.getInstance().userAgentValue =
+                                    "ShimmerENACT/2.0 (ENACT Project; Horizon Europe 101157151)"
+
+                                MapView(ctx).apply {
+                                    setTileSource(TileSourceFactory.MAPNIK)  // standard OSM tiles
+                                    setMultiTouchControls(true)
+                                    isClickable = true
+
+                                    // Build GeoPoint list for all GPS measurements
+                                    val geoPoints = gpsPoints.map { pt ->
+                                        GeoPoint(pt.latitude!!, pt.longitude!!)
                                     }
-                                    wv.webViewClient = WebViewClient()
-                                    wv.setBackgroundColor(AndroidColor.rgb(0x1a, 0x1f, 0x1a))
-                                    mapWebView.value = wv
-                                    // osmHtml is already computed (remember(gpsPoints)) —
-                                    // safe to load immediately in factory since hasGps==true
-                                    // guarantees it is non-empty.
-                                    wv.loadDataWithBaseURL(
-                                        "https://www.openstreetmap.org/",
-                                        osmHtml,
-                                        "text/html",
-                                        "UTF-8",
-                                        null
+
+                                    // Cyan polyline connecting all measurement positions
+                                    val polyline = Polyline().apply {
+                                        setPoints(geoPoints)
+                                        outlinePaint.color     = AndroidColor.rgb(0x00, 0xe5, 0xff)
+                                        outlinePaint.strokeWidth = 4f
+                                        outlinePaint.isAntiAlias = true
+                                    }
+                                    overlays.add(polyline)
+
+                                    // Cyan dots at every measurement position
+                                    val dotTheme = SimplePointTheme(
+                                        ArrayList<org.osmdroid.util.GeoPoint>(geoPoints), false
                                     )
+                                    val dotOpts = SimpleFastPointOverlayOptions.getDefaultStyle().apply {
+                                        setAlgorithm(SimpleFastPointOverlayOptions.RenderingAlgorithm.NO_OPTIMIZATION)
+                                        setRadius(8f)
+                                        setIsClickable(false)
+                                        setPointStyle(Paint().apply {
+                                            style       = Paint.Style.FILL
+                                            color       = AndroidColor.rgb(0x00, 0xe5, 0xff)
+                                            isAntiAlias = true
+                                        })
+                                    }
+                                    overlays.add(SimpleFastPointOverlay(dotTheme, dotOpts))
+
+                                    // Centre and zoom to fit all points
+                                    val centre = GeoPoint(
+                                        gpsPoints.mapNotNull { it.latitude  }.average(),
+                                        gpsPoints.mapNotNull { it.longitude }.average()
+                                    )
+                                    controller.setCenter(centre)
+                                    controller.setZoom(16.0)
+                                    // Zoom to bounding box after layout
+                                    post {
+                                        val box = org.osmdroid.util.BoundingBox.fromGeoPoints(geoPoints)
+                                        zoomToBoundingBox(box, true, 40)
+                                    }
+
+                                    mapViewRef.value = this
                                 }
                             },
-                            update = { /* map content is static; selection driven via JS in LaunchedEffect */ }
+                            update = { /* map content is static; selection driven via LaunchedEffect(selectedIndex) */ }
                         )
                     }
                 }
@@ -552,50 +556,6 @@ fun RecordingViewerScreen(
         }
     }
 }
-
-// ── OSM map HTML ───────────────────────────────────────────────────────────────
-// Leaflet CSS and JS are loaded from unpkg.com CDN (no integrity/crossorigin
-// attributes — SRI checks fail inside WebView's synthetic origin context).
-// OSM raster tiles are fetched at runtime; INTERNET permission is declared in
-// the manifest and MIXED_CONTENT_ALWAYS_ALLOW is set on the WebView.
-private fun buildOsmHtml(centLat: Double, centLon: Double, coordsJson: String): String = """<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-html,body,#map{margin:0;padding:0;width:100%;height:100%;background:#1a1f1a;}
-</style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-var map=L.map('map',{center:[$centLat,$centLon],zoom:16});
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom:19
-}).addTo(map);
-var coords=[$coordsJson];
-var trace=L.polyline(coords,{color:'#00e5ff',weight:2.5,opacity:0.85}).addTo(map);
-coords.forEach(function(c){
-  L.circleMarker(c,{radius:3,color:'#00e5ff',fillColor:'#00e5ff',fillOpacity:1.0,weight:1}).addTo(map);
-});
-var selMarker=L.circleMarker([0,0],{radius:10,color:'#ffffff',fillColor:'#dd0000',fillOpacity:0.92,weight:3});
-var selVisible=false;
-function moveSelected(lat,lon){
-  selMarker.setLatLng([lat,lon]);
-  if(!selVisible){selMarker.addTo(map);selVisible=true;}
-  map.panTo([lat,lon],{animate:true,duration:0.25});
-}
-function clearSelected(){
-  if(selVisible){map.removeLayer(selMarker);selVisible=false;}
-}
-if(coords.length>1){map.fitBounds(trace.getBounds(),{padding:[16,16]});}
-</script>
-</body>
-</html>"""
 
 @Composable
 private fun StatChip(label: String, value: String, color: Color) {

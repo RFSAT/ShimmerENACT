@@ -2,6 +2,39 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.1.0
+
+### Changed
+- **Map: replaced WebView + Leaflet.js with native osmdroid MapView** —
+  The WebView approach was abandoned after four unsuccessful releases. The root cause
+  is that `WebView.loadDataWithBaseURL()` does not grant the loaded page network access
+  to third-party origins regardless of the base URL argument; Android's security model
+  treats the page as coming from a synthetic context and blocks the Leaflet CDN fetch
+  and OSM tile requests. There is no setting combination that reliably fixes this across
+  Android API 26–35 without running a local HTTP server.
+
+  The map is now rendered with **osmdroid 6.1.20** (`org.osmdroid:osmdroid-android`),
+  a pure-Android native library that draws OpenStreetMap tiles directly on a `MapView`
+  canvas using standard Android `HttpURLConnection` networking — no WebView, no
+  JavaScript engine, no CDN, no CORS:
+  - Tile source: OSM Standard (MAPNIK) — same data as Leaflet was using
+  - `MapView` integrates with Jetpack Compose via `AndroidView`, identical to the
+    existing `LineChart` integration
+  - Cyan polyline connecting all measurement GPS positions (`Polyline` overlay)
+  - Solid cyan dot at every individual measurement position (`SimpleFastPointOverlay`)
+  - Red filled circle (22 px) marks the currently selected sample; updated via
+    `LaunchedEffect(selectedIndex)` replacing and re-adding a `SimpleFastPointOverlay`
+  - Map pans to the selected point with `controller.animateTo()`
+  - On first display, the view is fitted to the bounding box of all GPS points via
+    `zoomToBoundingBox()` called in a `post {}` block after layout
+  - `Configuration.userAgentValue` set to identify the app to OSM tile servers per
+    OSM tile usage policy
+  - `INTERNET` permission already declared in `AndroidManifest.xml` from v2.0.0
+
+### Added
+- `org.osmdroid:osmdroid-android:6.1.20` dependency in `app/build.gradle`
+  (Apache 2.0 licence; available on Maven Central; no additional repository required)
+
 ## v2.0.3
 
 ### Fixed
