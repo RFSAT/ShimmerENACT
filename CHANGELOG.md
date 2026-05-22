@@ -2,7 +2,33 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
-## v2.0.0
+## v2.0.1
+
+### Fixed
+- **Graph: zoom preserved across interactions** — `fitScreen()` was being called inside
+  the Compose `update` lambda, which runs on every recomposition (including on every
+  `selectedIndex` state change). This reset the viewport on every tap, making zoom
+  impossible to hold. Data is now pushed to the chart exclusively via
+  `LaunchedEffect(entries)`, which only fires when the underlying dataset changes.
+  `fitScreen()` is called once at that point; subsequent taps and drags no longer
+  touch the viewport. Pinch-to-zoom (`setPinchZoom(true)`) re-enabled.
+- **Graph: selected-point circle enlarged** — red fill radius increased from 12 px
+  to 18 px; white ring radius increased from 14 px to 22 px with a 3 px stroke width,
+  making the indicator clearly visible on small-screen devices.
+- **Map: OSM tiles and Leaflet now load correctly** — `loadDataWithBaseURL` was using
+  `https://tile.openstreetmap.org/` as the base URL, but Leaflet is loaded from
+  `unpkg.com`; the mismatched origin caused the WebView security context to block the
+  CDN scripts. Base URL changed to `https://www.openstreetmap.org/` (same registrable
+  domain as the tile server), which satisfies the browser security model and allows
+  Leaflet to bootstrap. `mixedContentMode` set to `MIXED_CONTENT_ALWAYS_ALLOW` and
+  `useWideViewPort` / `loadWithOverviewMode` enabled. Background colour set to the
+  app dark colour instead of transparent to prevent the white-flash before tiles load.
+- **CI: debug APK build removed** — the workflow now builds and publishes only the
+  release APK and release AAB. `lintRelease` and `testReleaseUnitTest` replace their
+  debug-variant equivalents. Artifact names updated to
+  `ShimmerENACT-<version>-release` and `ShimmerENACT-<version>-PlayStore`.
+
+
 
 ### Added
 - **Graph: data-point circles** — every measurement is now marked with a small filled

@@ -8,7 +8,6 @@ import android.webkit.WebSettings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -73,7 +72,7 @@ fun RecordingViewerScreen(
             val loaded = withContext(Dispatchers.IO) {
                 val file = File(recordingFile.path)
                 if (!file.exists()) throw Exception("File not found:\n${recordingFile.path}")
-                val result   = mutableListOf<CsvPoint>()
+                val result       = mutableListOf<CsvPoint>()
                 var headerParsed = false
                 var tsCol  = 1
                 var valCol = 2
@@ -85,7 +84,7 @@ fun RecordingViewerScreen(
                         val line = rawLine.trim()
                         if (line.isEmpty() || line.startsWith("#")) continue
                         if (!headerParsed) {
-                            val cols = line.split(",")
+                            val cols    = line.split(",")
                             val tsMsIdx = cols.indexOfFirst { it.trim().startsWith("timestamp_ms") }
                             val isoIdx  = cols.indexOfFirst { it.trim().startsWith("timestamp_iso") }
                             latCol = cols.indexOfFirst { it.trim().startsWith("latitude") }
@@ -109,7 +108,7 @@ fun RecordingViewerScreen(
                             runCatching { isoFmt.parse(iso)?.time }.getOrNull()
                         } ?: continue
 
-                        val v = cols.getOrNull(valCol)?.trim()?.toDoubleOrNull() ?: continue
+                        val v   = cols.getOrNull(valCol)?.trim()?.toDoubleOrNull() ?: continue
                         val lat = if (latCol >= 0) cols.getOrNull(latCol)?.trim()?.toDoubleOrNull() else null
                         val lon = if (lonCol >= 0) cols.getOrNull(lonCol)?.trim()?.toDoubleOrNull() else null
 
@@ -126,7 +125,7 @@ fun RecordingViewerScreen(
         }
     }
 
-    // ── Stats ──────────────────────────────────────────────────────────────────
+    // ── Derived state ──────────────────────────────────────────────────────────
     val stats = remember(points) {
         if (points.isEmpty()) null else {
             val values = points.map { it.value }
@@ -134,7 +133,7 @@ fun RecordingViewerScreen(
         }
     }
 
-    // Chart entries built once per data load
+    // Chart entries — rebuilt only when points change, never on recomposition
     val entries = remember(points) {
         if (points.isEmpty()) emptyList()
         else {
@@ -145,35 +144,72 @@ fun RecordingViewerScreen(
         }
     }
 
-    // GPS points with valid coordinates
-    val gpsPoints = remember(points) {
-        points.filter { it.latitude != null && it.longitude != null }
-    }
-    val hasGps = gpsPoints.isNotEmpty()
+    val gpsPoints = remember(points) { points.filter { it.latitude != null && it.longitude != null } }
+    val hasGps    = gpsPoints.isNotEmpty()
 
-    // Stable ARGB values
+    // Stable ARGB — computed once, not inside update lambdas
     val accentArgb       = EnactGreen.toArgb()
     val onSurfaceDimArgb = EnactOnSurfaceDim.toArgb()
     val bgArgb           = EnactDark.toArgb()
 
-    // WebView reference for JS map updates
-    var mapWebView by remember { mutableStateOf<WebView?>(null) }
+    // Shared mutable ref so the chart object can be accessed from listeners without
+    // holding a stale Compose snapshot reference.
+    val chartRef = remember { mutableStateOf<LineChart?>(null) }
 
-    // ── Push selected marker to map whenever it changes ────────────────────────
+    // WebView ref for JS-driven map updates
+    val mapWebView = remember { mutableStateOf<WebView?>(null) }
+
+    // ── Push selected-point marker to map ──────────────────────────────────────
+    // Runs whenever selectedIndex changes — does NOT trigger a chart recomposition.
     LaunchedEffect(selectedIndex) {
-        val wv = mapWebView ?: return@LaunchedEffect
+        val wv = mapWebView.value ?: return@LaunchedEffect
         val sp = selectedPoint
         if (sp?.latitude != null && sp.longitude != null) {
-            wv.post {
-                wv.evaluateJavascript(
-                    "moveSelected(${sp.latitude}, ${sp.longitude});", null
-                )
-            }
+            wv.post { wv.evaluateJavascript("moveSelected(${sp.latitude},${sp.longitude});", null) }
         } else {
-            wv.post {
-                wv.evaluateJavascript("clearSelected();", null)
-            }
+            wv.post { wv.evaluateJavascript("clearSelected();", null) }
         }
+    }
+
+    // ── Push new dataset to chart when entries change ──────────────────────────
+    // Separated from the factory so that zoom state is preserved across
+    // recompositions that don't change the underlying data.
+    LaunchedEffect(entries) {
+        val chart = chartRef.value ?: return@LaunchedEffect
+        if (entries.isEmpty()) {
+            chart.data = null
+            chart.invalidate()
+            return@LaunchedEffect
+        }
+
+        val drawCircles = entries.size < 5000
+        val dataset = LineDataSet(entries, "").apply {
+            color            = accentArgb
+            lineWidth        = if (entries.size > 2000) 1f else 1.5f
+            setDrawCircles(drawCircles)
+            setCircleColor(accentArgb)
+            circleHoleColor  = bgArgb
+            circleRadius     = 2.5f
+            circleHoleRadius = 1.0f
+            setDrawValues(false)
+            mode             = LineDataSet.Mode.LINEAR
+            setDrawFilled(true)
+            fillColor        = accentArgb
+            fillAlpha        = 20
+            // No crosshair lines — selection is shown by the custom renderer
+            highLightColor   = AndroidColor.TRANSPARENT
+            highlightLineWidth  = 0f
+            isHighlightEnabled  = true
+            setDrawHighlightIndicators(false)
+        }
+
+        chart.data = LineData(dataset)
+        chart.data.notifyDataChanged()
+        chart.notifyDataSetChanged()
+        // fitScreen() only on first load — zoom state is preserved for subsequent
+        // recompositions because this LaunchedEffect only re-runs when entries change
+        chart.fitScreen()
+        chart.invalidate()
     }
 
     // ── Scaffold ───────────────────────────────────────────────────────────────
@@ -219,9 +255,7 @@ fun RecordingViewerScreen(
                 // ── Loading ──────────────────────────────────────────────────
                 isLoading -> {
                     Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(300.dp),
+                        Modifier.fillMaxWidth().height(300.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -235,10 +269,7 @@ fun RecordingViewerScreen(
                 // ── Error ────────────────────────────────────────────────────
                 loadError != null -> {
                     Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(300.dp)
-                            .padding(24.dp),
+                        Modifier.fillMaxWidth().height(300.dp).padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -256,9 +287,7 @@ fun RecordingViewerScreen(
                 // ── No data ──────────────────────────────────────────────────
                 points.isEmpty() -> {
                     Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(300.dp),
+                        Modifier.fillMaxWidth().height(300.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -273,6 +302,7 @@ fun RecordingViewerScreen(
 
                 // ── Chart + Map ──────────────────────────────────────────────
                 else -> {
+
                     // Stats strip
                     stats?.let { (min, mean, max) ->
                         Row(
@@ -289,13 +319,13 @@ fun RecordingViewerScreen(
                         }
                     }
 
-                    // Cursor readout — fixed height
+                    // Cursor readout
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                if (selectedPoint != null)
-                                    EnactGreen.copy(alpha = 0.10f) else EnactDark
+                                if (selectedPoint != null) EnactGreen.copy(alpha = 0.10f)
+                                else EnactDark
                             )
                             .padding(horizontal = 16.dp, vertical = 6.dp)
                     ) {
@@ -333,34 +363,37 @@ fun RecordingViewerScreen(
                     }
 
                     // ── MPAndroidChart ────────────────────────────────────────
+                    // factory: create and fully configure the chart once.
+                    // update: intentionally empty — all data pushes happen in
+                    //         LaunchedEffect(entries) to avoid resetting zoom on recompose.
                     AndroidView(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(280.dp)
+                            .height(320.dp)
                             .padding(bottom = 4.dp, start = 4.dp, end = 4.dp),
                         factory = { ctx ->
                             LineChart(ctx).apply {
-                                description.isEnabled  = false
-                                legend.isEnabled       = false
+                                description.isEnabled     = false
+                                legend.isEnabled          = false
                                 setBackgroundColor(bgArgb)
                                 setDrawGridBackground(false)
                                 setTouchEnabled(true)
-                                isDragEnabled          = true
-                                isScaleXEnabled        = true
-                                isScaleYEnabled        = true
-                                setPinchZoom(false)
+                                isDragEnabled             = true
+                                isScaleXEnabled           = true
+                                isScaleYEnabled           = true
+                                setPinchZoom(true)         // pinch-to-zoom enabled
                                 setDrawMarkers(false)
                                 isHighlightPerDragEnabled = true
                                 setNoDataText("No data")
 
                                 xAxis.apply {
-                                    position = XAxis.XAxisPosition.BOTTOM
+                                    position             = XAxis.XAxisPosition.BOTTOM
                                     setDrawGridLines(true)
-                                    gridColor  = AndroidColor.argb(40, 255, 255, 255)
-                                    textColor  = onSurfaceDimArgb
-                                    textSize   = 9f
-                                    labelCount = 6
-                                    granularity        = 0.001f
+                                    gridColor            = AndroidColor.argb(40, 255, 255, 255)
+                                    textColor            = onSurfaceDimArgb
+                                    textSize             = 9f
+                                    labelCount           = 6
+                                    granularity          = 0.001f
                                     isGranularityEnabled = true
                                     setAvoidFirstLastClipping(true)
                                     valueFormatter = object : ValueFormatter() {
@@ -377,174 +410,147 @@ fun RecordingViewerScreen(
                                     setDrawAxisLine(false)
                                 }
                                 axisRight.isEnabled = false
-                            }
-                        },
-                        update = { chart ->
-                            if (entries.isEmpty()) {
-                                chart.data = null; chart.invalidate(); return@AndroidView
-                            }
 
-                            // Always draw small circles on every data point (same colour as line)
-                            // Threshold: skip circles only for extremely dense datasets (>5000 pts)
-                            // where they would overlap into a solid band anyway.
-                            val drawCircles = entries.size < 5000
-
-                            val dataset = LineDataSet(entries, "").apply {
-                                color           = accentArgb
-                                lineWidth       = if (entries.size > 2000) 1f else 1.5f
-                                // ── Task 1(a): small same-colour circles on every point ──
-                                setDrawCircles(drawCircles)
-                                setCircleColor(accentArgb)
-                                circleHoleColor = bgArgb
-                                circleRadius    = 2.5f
-                                circleHoleRadius = 1.0f
-                                setDrawValues(false)
-                                mode            = LineDataSet.Mode.LINEAR
-                                setDrawFilled(true)
-                                fillColor       = accentArgb
-                                fillAlpha       = 20
-                                // ── Task 1(b): disable crosshair lines; use red circle instead ──
-                                highLightColor      = AndroidColor.TRANSPARENT   // hides highlight line
-                                highlightLineWidth  = 0f
-                                isHighlightEnabled  = true
-                                setDrawHighlightIndicators(false)  // no vertical/horizontal lines
-                            }
-
-                            chart.data = LineData(dataset)
-                            chart.data.notifyDataChanged()
-                            chart.notifyDataSetChanged()
-                            chart.fitScreen()
-                            chart.setVisibleXRangeMaximum(Float.MAX_VALUE)
-
-                            // ── Custom renderer: draws a red circle on the highlighted entry ──
-                            chart.renderer = object : com.github.mikephil.charting.renderer.LineChartRenderer(
-                                chart, chart.animator, chart.viewPortHandler
-                            ) {
-                                private val selectedPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                // ── Custom renderer: large red filled circle on selected point ──
+                                // Paints are allocated once here in factory, not on every draw call.
+                                val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                                     style = android.graphics.Paint.Style.FILL
-                                    color = AndroidColor.RED
+                                    color = AndroidColor.rgb(220, 0, 0)   // solid red
                                 }
-                                private val selectedBorderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                    style = android.graphics.Paint.Style.STROKE
-                                    color = AndroidColor.WHITE
-                                    strokeWidth = 2f
+                                val ringPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                    style       = android.graphics.Paint.Style.STROKE
+                                    color       = AndroidColor.WHITE
+                                    strokeWidth = 3f
                                 }
-
-                                override fun drawHighlighted(
-                                    c: android.graphics.Canvas?,
-                                    indices: Array<out Highlight>?
+                                renderer = object : com.github.mikephil.charting.renderer.LineChartRenderer(
+                                    this, animator, viewPortHandler
                                 ) {
-                                    c ?: return
-                                    indices ?: return
-                                    val data = mChart.data ?: return
-                                    for (high in indices) {
-                                        val set = data.getDataSetByIndex(high.dataSetIndex) ?: continue
-                                        val e = data.getEntryForHighlight(high) ?: continue
-                                        val pix = mChart.getTransformer(set.axisDependency)
-                                            .getPixelForValues(e.x, e.y)
-                                        val x = pix.x.toFloat()
-                                        val y = pix.y.toFloat()
-                                        // Outer white ring
-                                        c.drawCircle(x, y, 14f, selectedBorderPaint)
-                                        // Red fill
-                                        c.drawCircle(x, y, 12f, selectedPaint)
+                                    override fun drawHighlighted(
+                                        c: android.graphics.Canvas?,
+                                        indices: Array<out Highlight>?
+                                    ) {
+                                        c ?: return
+                                        indices ?: return
+                                        val data = mChart.data ?: return
+                                        for (high in indices) {
+                                            val set = data.getDataSetByIndex(high.dataSetIndex) ?: continue
+                                            val e   = data.getEntryForHighlight(high) ?: continue
+                                            val pix = mChart.getTransformer(set.axisDependency)
+                                                          .getPixelForValues(e.x, e.y)
+                                            val x = pix.x.toFloat()
+                                            val y = pix.y.toFloat()
+                                            // White ring (drawn first, underneath)
+                                            c.drawCircle(x, y, 22f, ringPaint)
+                                            // Solid red fill
+                                            c.drawCircle(x, y, 18f, fillPaint)
+                                        }
                                     }
                                 }
-                            }
 
-                            // ── Value selection: tap ──────────────────────────
-                            val selectionListener = object : OnChartValueSelectedListener {
-                                override fun onValueSelected(e: Entry?, h: Highlight?) {
-                                    e ?: return
-                                    val idx = e.data as? Int ?: return
-                                    if (idx in points.indices) {
-                                        selectedPoint = points[idx]
-                                        selectedIndex = idx
-                                    }
-                                }
-                                override fun onNothingSelected() {
-                                    selectedPoint = null
-                                    selectedIndex = -1
-                                }
-                            }
-                            chart.setOnChartValueSelectedListener(selectionListener)
-
-                            // ── Gesture listener: drag updates highlight ───────
-                            chart.onChartGestureListener = object : OnChartGestureListener {
-                                override fun onChartGestureStart(me: MotionEvent?, lastPerformedGesture: ChartTouchListener.ChartGesture?) {}
-                                override fun onChartGestureEnd(me: MotionEvent?, lastPerformedGesture: ChartTouchListener.ChartGesture?) {}
-                                override fun onChartLongPressed(me: MotionEvent?) {}
-                                override fun onChartDoubleTapped(me: MotionEvent?) {}
-                                override fun onChartSingleTapped(me: MotionEvent?) {}
-                                override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, velocityX: Float, velocityY: Float) {}
-                                override fun onChartScale(me: MotionEvent?, scaleX: Float, scaleY: Float) {}
-                                override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
-                                    me ?: return
-                                    val h = chart.getHighlightByTouchPoint(me.x, me.y)
-                                    if (h != null) {
-                                        chart.highlightValue(h, false)
-                                        val e = chart.data?.getEntryForHighlight(h)
+                                // ── Value selection listener ──────────────────
+                                setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                                    override fun onValueSelected(e: Entry?, h: Highlight?) {
                                         val idx = e?.data as? Int ?: return
                                         if (idx in points.indices) {
                                             selectedPoint = points[idx]
                                             selectedIndex = idx
                                         }
                                     }
-                                }
-                            }
+                                    override fun onNothingSelected() {
+                                        selectedPoint = null
+                                        selectedIndex = -1
+                                    }
+                                })
 
-                            chart.invalidate()
-                        }
+                                // ── Gesture listener: continuous drag tracing ──
+                                onChartGestureListener = object : OnChartGestureListener {
+                                    override fun onChartGestureStart(me: MotionEvent?, g: ChartTouchListener.ChartGesture?) {}
+                                    override fun onChartGestureEnd(me: MotionEvent?, g: ChartTouchListener.ChartGesture?) {}
+                                    override fun onChartLongPressed(me: MotionEvent?) {}
+                                    override fun onChartDoubleTapped(me: MotionEvent?) {}
+                                    override fun onChartSingleTapped(me: MotionEvent?) {}
+                                    override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, vX: Float, vY: Float) {}
+                                    override fun onChartScale(me: MotionEvent?, sX: Float, sY: Float) {}
+                                    override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
+                                        me ?: return
+                                        val h = getHighlightByTouchPoint(me.x, me.y)
+                                        if (h != null) {
+                                            highlightValue(h, false)
+                                            val idx = data?.getEntryForHighlight(h)?.data as? Int ?: return
+                                            if (idx in points.indices) {
+                                                selectedPoint = points[idx]
+                                                selectedIndex = idx
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Store reference so LaunchedEffect can push data into it
+                                chartRef.value = this
+                            }
+                        },
+                        update = { /* intentionally empty — zoom state must not be reset here */ }
                     )
 
-                    // ── OSM Map (Tasks 2 & 3) — shown only when GPS data present ─
+                    // ── OSM Location Trace Map ────────────────────────────────
+                    // Shown only when the CSV contains GPS columns.
                     if (hasGps) {
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "  LOCATION TRACE",
-                            fontSize = 10.sp,
-                            color = EnactOnSurfaceDim,
+                            fontSize   = 10.sp,
+                            color      = EnactOnSurfaceDim,
                             letterSpacing = 1.sp,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            modifier   = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
+
+                        val coordsJson = remember(gpsPoints) {
+                            gpsPoints.joinToString(",") { "[${it.latitude},${it.longitude}]" }
+                        }
+                        val centLat = remember(gpsPoints) { gpsPoints.mapNotNull { it.latitude }.average() }
+                        val centLon = remember(gpsPoints) { gpsPoints.mapNotNull { it.longitude }.average() }
+                        val osmHtml = remember(gpsPoints) { buildOsmHtml(centLat, centLon, coordsJson) }
 
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(340.dp)
+                                .height(360.dp)
                                 .padding(horizontal = 4.dp, vertical = 4.dp),
                             factory = { ctx ->
                                 WebView(ctx).apply {
                                     settings.apply {
                                         javaScriptEnabled   = true
                                         domStorageEnabled   = true
+                                        // Allow https CDN resources (Leaflet, OSM tiles) to load
+                                        // when the base URL is an https origin.
+                                        mixedContentMode    = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                         cacheMode           = WebSettings.LOAD_DEFAULT
                                         setSupportZoom(true)
                                         builtInZoomControls = true
                                         displayZoomControls = false
+                                        useWideViewPort     = true
+                                        loadWithOverviewMode = true
                                     }
                                     webViewClient = WebViewClient()
-                                    setBackgroundColor(AndroidColor.TRANSPARENT)
+                                    // Use dark background colour matching the app — avoids
+                                    // a white flash before tiles load.
+                                    setBackgroundColor(AndroidColor.rgb(0x1a, 0x1f, 0x1a))
 
-                                    // Build the polyline coords JSON for the cyan trace
-                                    val coordsJson = gpsPoints.joinToString(",") {
-                                        "[${it.latitude},${it.longitude}]"
-                                    }
-
-                                    // Centre map on the mean of all GPS points
-                                    val centLat = gpsPoints.mapNotNull { it.latitude }.average()
-                                    val centLon = gpsPoints.mapNotNull { it.longitude }.average()
-
-                                    val html = buildOsmHtml(centLat, centLon, coordsJson)
+                                    // Base URL must be an https origin so the WebView security
+                                    // context permits loading Leaflet from unpkg.com and tiles
+                                    // from tile.openstreetmap.org.
                                     loadDataWithBaseURL(
-                                        "https://tile.openstreetmap.org/",  // allow OSM tile fetches
-                                        html, "text/html", "UTF-8", null
+                                        "https://www.openstreetmap.org/",
+                                        osmHtml,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
                                     )
-                                    mapWebView = this
+                                    mapWebView.value = this
                                 }
                             },
-                            update = { /* map is driven via JS calls in LaunchedEffect */ }
+                            update = { /* driven via JS in LaunchedEffect(selectedIndex) */ }
                         )
                     }
                 }
@@ -553,80 +559,75 @@ fun RecordingViewerScreen(
     }
 }
 
-// ── OSM map HTML — Leaflet.js via CDN ─────────────────────────────────────────
+// ── OSM map HTML — Leaflet.js 1.9.4 via unpkg CDN ────────────────────────────
 private fun buildOsmHtml(centLat: Double, centLon: Double, coordsJson: String): String = """
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<link rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN2GKGs=" crossorigin=""></script>
 <style>
-  html,body,#map { margin:0; padding:0; width:100%; height:100%; background:#1a1f1a; }
+  html, body, #map {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: #1a1f1a;
+    font-family: sans-serif;
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-var map = L.map('map', {
-  center: [$centLat, $centLon],
-  zoom: 16,
-  zoomControl: true
-});
+  var map = L.map('map', {
+    center: [$centLat, $centLon],
+    zoom: 16
+  });
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  maxZoom: 19
-}).addTo(map);
-
-// Cyan trace — all measurement positions
-var coords = [$coordsJson];
-var trace = L.polyline(coords, {
-  color: '#00e5ff',
-  weight: 2.5,
-  opacity: 0.85
-}).addTo(map);
-
-// Small cyan dots at every measurement point
-coords.forEach(function(c) {
-  L.circleMarker(c, {
-    radius: 3,
-    color: '#00e5ff',
-    fillColor: '#00e5ff',
-    fillOpacity: 0.7,
-    weight: 1
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
   }).addTo(map);
-});
 
-// Red circle for selected measurement (hidden until JS call)
-var selectedMarker = L.circleMarker([0,0], {
-  radius: 10,
-  color: '#ffffff',
-  fillColor: '#ff1744',
-  fillOpacity: 0.9,
-  weight: 2
-});
-var selectedVisible = false;
+  var coords = [$coordsJson];
 
-function moveSelected(lat, lon) {
-  selectedMarker.setLatLng([lat, lon]);
-  if (!selectedVisible) {
-    selectedMarker.addTo(map);
-    selectedVisible = true;
+  // Cyan polyline connecting all measurement positions
+  var trace = L.polyline(coords, {
+    color: '#00e5ff', weight: 2.5, opacity: 0.85
+  }).addTo(map);
+
+  // Small cyan dot at every individual measurement position
+  coords.forEach(function(c) {
+    L.circleMarker(c, {
+      radius: 3, color: '#00e5ff',
+      fillColor: '#00e5ff', fillOpacity: 0.7, weight: 1
+    }).addTo(map);
+  });
+
+  // Red circle for the currently selected measurement (hidden initially)
+  var selMarker = L.circleMarker([0, 0], {
+    radius: 10, color: '#ffffff',
+    fillColor: '#dd0000', fillOpacity: 0.92, weight: 3
+  });
+  var selVisible = false;
+
+  function moveSelected(lat, lon) {
+    selMarker.setLatLng([lat, lon]);
+    if (!selVisible) { selMarker.addTo(map); selVisible = true; }
+    map.panTo([lat, lon], { animate: true, duration: 0.25 });
   }
-  map.panTo([lat, lon], {animate: true, duration: 0.3});
-}
 
-function clearSelected() {
-  if (selectedVisible) {
-    map.removeLayer(selectedMarker);
-    selectedVisible = false;
+  function clearSelected() {
+    if (selVisible) { map.removeLayer(selMarker); selVisible = false; }
   }
-}
 
-// Fit map to the full trace on load
-if (coords.length > 0) { map.fitBounds(trace.getBounds(), {padding: [16,16]}); }
+  // Fit view to the full trace on load
+  if (coords.length > 1) {
+    map.fitBounds(trace.getBounds(), { padding: [16, 16] });
+  }
 </script>
 </body>
 </html>
