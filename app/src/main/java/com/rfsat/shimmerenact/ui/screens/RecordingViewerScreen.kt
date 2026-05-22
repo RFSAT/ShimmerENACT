@@ -10,7 +10,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -329,12 +328,13 @@ fun RecordingViewerScreen(
                 }
 
                 else -> {
-                    // ── Upper scrollable panel ────────────────────────────────
+                    // ── Upper panel: fixed strips + chart fills remaining space ──
+                    // No verticalScroll — it intercepts drag gestures and prevents
+                    // MPAndroidChart from receiving pan/drag events on the chart.
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .verticalScroll(rememberScrollState())
                     ) {
                         // ── Signal selection chips ────────────────────────────
                         // Only shown when there are 2+ signals
@@ -459,7 +459,7 @@ fun RecordingViewerScreen(
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .weight(1f)            // fills all remaining space in the panel
                                 .padding(bottom = 4.dp, start = 4.dp, end = 4.dp),
                             factory = { ctx ->
                                 LineChart(ctx).apply {
@@ -474,6 +474,19 @@ fun RecordingViewerScreen(
                                     isScaleXEnabled           = true
                                     isScaleYEnabled           = true
                                     setPinchZoom(false)        // independent axis zoom
+                                    // Prevent parent scroll containers from stealing
+                                    // touch events while the user is interacting with
+                                    // the chart (panning, zooming, selecting).
+                                    setOnTouchListener { v, event ->
+                                        when (event.action) {
+                                            android.view.MotionEvent.ACTION_DOWN ->
+                                                v.parent?.requestDisallowInterceptTouchEvent(true)
+                                            android.view.MotionEvent.ACTION_UP,
+                                            android.view.MotionEvent.ACTION_CANCEL ->
+                                                v.parent?.requestDisallowInterceptTouchEvent(false)
+                                        }
+                                        false   // let MPAndroidChart handle the event
+                                    }
                                     setDrawMarkers(false)
                                     isHighlightPerDragEnabled = true
                                     setNoDataText("No data")

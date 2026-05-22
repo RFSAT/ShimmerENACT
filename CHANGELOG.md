@@ -2,6 +2,40 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.2.2
+
+### Fixed
+- **Graph moves vertically when dragged; drag does not pan the waveform** —
+  two root causes, both in the layout of `RecordingViewerScreen`:
+
+  1. *`verticalScroll` on the upper panel Column intercepted touch events* —
+     the Column containing the chips strip, stats strip, readout, and chart
+     had `verticalScroll(rememberScrollState())`. Compose scroll containers
+     claim ownership of vertical gesture events before any child view sees
+     them. When the user dragged a finger on the chart, the scroll container
+     consumed the event and scrolled the panel instead of passing it to
+     MPAndroidChart. This caused the entire chart area to move vertically and
+     prevented horizontal pan gestures from reaching the chart.
+     Fix: `verticalScroll` removed from the upper panel. The strips above the
+     chart are all fixed-height and require no scrolling; the chart itself
+     handles panning internally.
+
+  2. *Chart height fixed at 300 dp instead of filling available space* —
+     with `verticalScroll` removed, the Column no longer has an unbounded
+     height, so `height(300.dp)` would leave unused space below the chart.
+     The chart modifier is changed to `weight(1f)` so it fills all space not
+     taken by the fixed-height strips (chips ≈ 36 dp when present, stats
+     ≈ 44 dp, readout = 36 dp), making full use of the screen regardless of
+     device size.
+
+  3. *Touch interception guard added* — `setOnTouchListener` is added to the
+     `LineChart` view. On `ACTION_DOWN` it calls
+     `parent.requestDisallowInterceptTouchEvent(true)`, telling any ancestor
+     view group not to intercept touch events for the duration of the gesture.
+     On `ACTION_UP`/`ACTION_CANCEL` the flag is reset. This is belt-and-braces
+     protection against future layout changes re-introducing a scroll ancestor,
+     and it ensures pinch-to-zoom gestures are never stolen by the outer Column.
+
 ## v2.2.1
 
 ### Fixed
