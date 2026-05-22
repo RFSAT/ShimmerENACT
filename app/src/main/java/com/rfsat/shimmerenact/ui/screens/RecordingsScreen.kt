@@ -44,7 +44,8 @@ import java.util.*
 fun RecordingsScreen(
     viewModel: ShimmerViewModel,
     onBack: () -> Unit,
-    onViewFile: (RecordingFile) -> Unit = {}
+    onViewFile: (RecordingFile) -> Unit = {},
+    onViewSession: (RecordingSession) -> Unit = {}
 ) {
     val sessions by viewModel.sessions.collectAsState()
     val context = LocalContext.current
@@ -207,6 +208,7 @@ fun RecordingsScreen(
                         session = session,
                         dateFmt = dateFmt,
                         onViewFile = onViewFile,
+                        onViewSession = onViewSession,
                         onShareSession = {
                             // Share all files in session as a zip or sequential intents
                             val uris = session.files.mapNotNull { rf ->
@@ -276,6 +278,7 @@ fun SessionCard(
     session: RecordingSession,
     dateFmt: SimpleDateFormat,
     onViewFile: (RecordingFile) -> Unit = {},
+    onViewSession: (RecordingSession) -> Unit = {},
     onShareSession: () -> Unit,
     onShareFile: (RecordingFile) -> Unit,
     onDeleteSession: () -> Unit
@@ -325,6 +328,13 @@ fun SessionCard(
                             Text("$totalRows rows",
                                 fontSize = 11.sp, color = EnactOnSurfaceDim)
                         }
+                    }
+                }
+                // View all signals button (only when session has 2+ signal files)
+                if (session.files.size >= 2) {
+                    IconButton(onClick = { onViewSession(session) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.MultilineChart, "View all signals", tint = EnactGreen,
+                            modifier = Modifier.size(18.dp))
                     }
                 }
                 // Share all button

@@ -2,6 +2,52 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.2.0
+
+### Added
+- **Multi-signal graph viewer** — multiple signals from the same recording session
+  can now be displayed together on a single graph:
+
+  - A **"View all signals"** button (stacked-lines icon) appears in the session
+    header row when a session contains two or more signal files. Tapping it opens
+    the viewer with all files from that session loaded simultaneously.
+  - Each signal is drawn in a distinct colour taken from the `ChartColors` palette
+    defined in `Color.kt`. The MPAndroidChart legend is shown automatically when
+    more than one signal is active.
+  - A **signal selection chip bar** appears above the graph when two or more signals
+    are loaded. Each chip shows a colour dot and the signal name. Tapping a chip
+    toggles that signal's visibility on the graph. At least one signal must remain
+    visible at all times (the last active chip cannot be deselected).
+  - The **time axis is aligned** across all signals: the X origin is the earliest
+    timestamp across all loaded files, so signals recorded simultaneously overlay
+    correctly even if their individual timestamp offsets differ slightly.
+  - The **stats strip** shows min / mean / max for each visible signal, scrolling
+    horizontally if needed.
+  - The **cursor readout** shows the value of every visible signal at the timestamp
+    nearest to the tap position, colour-coded by signal, in a horizontally
+    scrollable row.
+  - **GPS / location map** is shown when any of the loaded files contains GPS
+    columns; the trace and selection marker work identically to the single-file view.
+  - **Single-file entry point is fully backward-compatible**: tapping the chart
+    icon on an individual file row opens the same viewer with one signal, with
+    no visible change in behaviour.
+
+### Changed
+- `RecordingViewerScreen` refactored into two overloads:
+  - `RecordingViewerScreen(recordingFile, onBack)` — existing single-file entry
+    point; delegates to the multi-file overload with a one-element list.
+  - `RecordingViewerScreen(files, title, onBack)` — new multi-file entry point.
+- `parseCsv` extracted into a private top-level function (previously inlined in
+  `LaunchedEffect`), allowing it to be called once per file in a parallel map.
+- Chart fill disabled for multi-signal view (fill areas overlap unreadably when
+  signals share the same Y range); fill remains on for single-signal view via the
+  same code path.
+- `Screen.SessionViewer` route added to `Screen.kt`.
+- `RecordingsScreen` receives a new `onViewSession` callback parameter (defaults
+  to `{}` for backward compatibility).
+- `MainActivity` wires `onViewSession` and adds the `SessionViewer` composable
+  destination to the `NavHost`.
+
 ## v2.1.6
 
 ### Fixed

@@ -225,6 +225,10 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                     onViewFile = { rf ->
                         val encoded = Uri.encode(rf.path)
                         navController.navigate(Screen.RecordingViewer.createRoute(encoded))
+                    },
+                    onViewSession = { session ->
+                        val encoded = Uri.encode(session.sessionId)
+                        navController.navigate(Screen.SessionViewer.createRoute(encoded))
                     }
                 )
             }
@@ -247,6 +251,25 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                     recordingFile = rf,
                     onBack = { navController.popBackStack() }
                 )
+            }
+            composable(
+                route = Screen.SessionViewer.route,
+                arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val encodedId = backStackEntry.arguments?.getString("sessionId") ?: ""
+                val sessionId = Uri.decode(encodedId)
+                val sessions by viewModel.sessions.collectAsState()
+                val session  = sessions.find { it.sessionId == sessionId }
+                if (session != null && session.files.isNotEmpty()) {
+                    RecordingViewerScreen(
+                        files  = session.files,
+                        title  = session.deviceName,
+                        onBack = { navController.popBackStack() }
+                    )
+                } else {
+                    // Session not yet loaded — go back
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                }
             }
             composable(Screen.Log.route) {
                 LogScreen(onBack = { navController.popBackStack() })
