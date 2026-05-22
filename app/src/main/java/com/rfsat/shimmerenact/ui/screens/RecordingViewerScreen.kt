@@ -171,7 +171,7 @@ fun RecordingViewerScreen(
 
         if (sp?.latitude != null && sp.longitude != null) {
             val pt    = GeoPoint(sp.latitude, sp.longitude)
-            val theme = SimplePointTheme(mutableListOf(pt), false)
+            val theme = SimplePointTheme(mutableListOf<org.osmdroid.util.IGeoPoint>(pt), false)
             val opts  = SimpleFastPointOverlayOptions.getDefaultStyle().apply {
                 setAlgorithm(SimpleFastPointOverlayOptions.RenderingAlgorithm.NO_OPTIMIZATION)
                 setRadius(22f)
@@ -470,7 +470,7 @@ fun RecordingViewerScreen(
                     // Native MapView — no WebView, no JavaScript, no CDN.
                     // Must be OUTSIDE the verticalScroll container (height constraint).
                     if (hasGps) {
-                        HorizontalDivider(color = EnactDarkMid, thickness = 1.dp)
+                        Divider(color = EnactDarkMid, thickness = 1.dp)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -518,7 +518,7 @@ fun RecordingViewerScreen(
 
                                     // Cyan dots at every measurement position
                                     val dotTheme = SimplePointTheme(
-                                        ArrayList<org.osmdroid.util.GeoPoint>(geoPoints), false
+                                        ArrayList<org.osmdroid.util.IGeoPoint>(geoPoints), false
                                     )
                                     val dotOpts = SimpleFastPointOverlayOptions.getDefaultStyle().apply {
                                         setAlgorithm(SimpleFastPointOverlayOptions.RenderingAlgorithm.NO_OPTIMIZATION)

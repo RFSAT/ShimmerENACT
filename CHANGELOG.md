@@ -2,6 +2,20 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.1.1
+
+### Fixed
+- **Compile error: `SimplePointTheme` type mismatch (lines 174, 521)** —
+  `SimplePointTheme` constructor expects `MutableList<IGeoPoint>`, not
+  `MutableList<GeoPoint>` or `ArrayList<GeoPoint>`. Kotlin does not automatically
+  widen a concrete subtype list to the interface list expected by the Java API.
+  Fixed by using `mutableListOf<IGeoPoint>(pt)` and `ArrayList<IGeoPoint>(geoPoints)`
+  with the explicit interface type argument.
+- **Compile error: `HorizontalDivider` unresolved reference (line 473)** —
+  `HorizontalDivider` was introduced in Material3 1.2.0; the project uses
+  `compose-bom:2023.10.01` which resolves to Material3 1.1.x. Replaced with the
+  compatible `Divider` composable, which is available in all Material3 1.x versions.
+
 ## v2.1.0
 
 ### Changed
