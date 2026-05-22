@@ -2,6 +2,28 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.0.3
+
+### Fixed
+- **Graph: independent X/Y zoom** — `setPinchZoom(true)` caused both axes to zoom
+  identically together. Changed to `setPinchZoom(false)`: with both `isScaleXEnabled`
+  and `isScaleYEnabled` true, MPAndroidChart detects the dominant direction of a
+  two-finger gesture and zooms only that axis — a predominantly horizontal spread
+  zooms the time axis, a predominantly vertical spread zooms the value axis.
+- **Map: WebView now renders correctly** — root cause identified and fixed. The
+  entire screen was wrapped in `verticalScroll(rememberScrollState())`. Compose
+  scroll containers measure their children with *unbounded (infinite) height*; the
+  Android view system then assigns the `WebView` zero actual pixels and it renders
+  nothing — the label "LOCATION TRACE" appeared but the map area was blank.
+  Fix: the layout is restructured into a non-scrollable outer `Column`. The upper
+  section (stats strip, value readout, chart) is wrapped in its own `verticalScroll`
+  column sized with `weight(1f)`. The map `AndroidView` sits below it as a separate
+  sibling with an explicit `height(320.dp)` — fully constrained, outside any
+  scroll container, so the WebView receives its correct measured dimensions and
+  Leaflet renders the map. The `osmHtml` string is now built in `remember(gpsPoints)`
+  (computed before composition) and loaded directly in `factory`, eliminating the
+  previous `update`-lambda timing complexity.
+
 ## v2.0.2
 
 ### Fixed

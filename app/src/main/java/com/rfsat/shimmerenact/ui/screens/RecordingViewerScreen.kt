@@ -127,13 +127,13 @@ fun RecordingViewerScreen(
 
     // ── Derived state ──────────────────────────────────────────────────────────
     val stats = remember(points) {
-        if (points.isEmpty()) null else {
+        if (points.isEmpty()) null
+        else {
             val values = points.map { it.value }
             Triple(values.min(), values.average(), values.max())
         }
     }
 
-    // Chart entries — rebuilt only when points change, never on recomposition
     val entries = remember(points) {
         if (points.isEmpty()) emptyList()
         else {
@@ -144,35 +144,20 @@ fun RecordingViewerScreen(
         }
     }
 
-    val gpsPoints = remember(points) { points.filter { it.latitude != null && it.longitude != null } }
-    val hasGps    = gpsPoints.isNotEmpty()
+    val gpsPoints = remember(points) {
+        points.filter { it.latitude != null && it.longitude != null }
+    }
+    val hasGps = gpsPoints.isNotEmpty()
 
-    // Stable ARGB — computed once, not inside update lambdas
+    // Stable ARGB colours
     val accentArgb       = EnactGreen.toArgb()
     val onSurfaceDimArgb = EnactOnSurfaceDim.toArgb()
     val bgArgb           = EnactDark.toArgb()
 
-    // Shared mutable ref so the chart object can be accessed from listeners without
-    // holding a stale Compose snapshot reference.
-    val chartRef = remember { mutableStateOf<LineChart?>(null) }
-
-    // WebView ref for JS-driven map updates
+    val chartRef   = remember { mutableStateOf<LineChart?>(null) }
     val mapWebView = remember { mutableStateOf<WebView?>(null) }
 
-    // OSM HTML state — built once per GPS dataset, held in MutableState so the
-    // WebView update lambda can always read the current value. factory() is called
-    // only once by Compose; update() runs on every recompose, so we load HTML there.
-    val osmHtmlState = remember { mutableStateOf("") }
-    LaunchedEffect(gpsPoints) {
-        if (gpsPoints.isEmpty()) return@LaunchedEffect
-        val coordsJson = gpsPoints.joinToString(",") { "[${it.latitude},${it.longitude}]" }
-        val centLat    = gpsPoints.mapNotNull { it.latitude  }.average()
-        val centLon    = gpsPoints.mapNotNull { it.longitude }.average()
-        osmHtmlState.value = buildOsmHtml(centLat, centLon, coordsJson)
-    }
-
-    // ── Push selected-point marker to map ──────────────────────────────────────
-    // Runs whenever selectedIndex changes — does NOT trigger a chart recomposition.
+    // ── Push selected marker to map via JS ─────────────────────────────────────
     LaunchedEffect(selectedIndex) {
         val wv = mapWebView.value ?: return@LaunchedEffect
         val sp = selectedPoint
@@ -183,16 +168,10 @@ fun RecordingViewerScreen(
         }
     }
 
-    // ── Push new dataset to chart when entries change ──────────────────────────
-    // Separated from the factory so that zoom state is preserved across
-    // recompositions that don't change the underlying data.
+    // ── Push dataset to chart only when entries change (preserves zoom) ────────
     LaunchedEffect(entries) {
         val chart = chartRef.value ?: return@LaunchedEffect
-        if (entries.isEmpty()) {
-            chart.data = null
-            chart.invalidate()
-            return@LaunchedEffect
-        }
+        if (entries.isEmpty()) { chart.data = null; chart.invalidate(); return@LaunchedEffect }
 
         val drawCircles = entries.size < 5000
         val dataset = LineDataSet(entries, "").apply {
@@ -208,20 +187,29 @@ fun RecordingViewerScreen(
             setDrawFilled(true)
             fillColor        = accentArgb
             fillAlpha        = 20
-            // No crosshair lines — selection is shown by the custom renderer
-            highLightColor   = AndroidColor.TRANSPARENT
+            highLightColor      = AndroidColor.TRANSPARENT
             highlightLineWidth  = 0f
             isHighlightEnabled  = true
             setDrawHighlightIndicators(false)
         }
-
         chart.data = LineData(dataset)
         chart.data.notifyDataChanged()
         chart.notifyDataSetChanged()
-        // fitScreen() only on first load — zoom state is preserved for subsequent
-        // recompositions because this LaunchedEffect only re-runs when entries change
         chart.fitScreen()
         chart.invalidate()
+    }
+
+    // ── Build the OSM HTML once when GPS points are available ──────────────────
+    // Leaflet JS+CSS are inlined so there are zero external dependencies —
+    // no CDN, no CORS, no network required for the map to render.
+    val osmHtml = remember(gpsPoints) {
+        if (gpsPoints.isEmpty()) ""
+        else {
+            val coordsJson = gpsPoints.joinToString(",") { "[${it.latitude},${it.longitude}]" }
+            val centLat    = gpsPoints.mapNotNull { it.latitude  }.average()
+            val centLon    = gpsPoints.mapNotNull { it.longitude }.average()
+            buildOsmHtml(centLat, centLon, coordsJson)
+        }
     }
 
     // ── Scaffold ───────────────────────────────────────────────────────────────
@@ -257,19 +245,20 @@ fun RecordingViewerScreen(
         },
         containerColor = EnactDark
     ) { padding ->
+
+        // ── Outer column: fills the screen, NOT scrollable ─────────────────────
+        // The chart panel scrolls internally; the map is a fixed-height block below.
+        // We must NOT wrap both in verticalScroll because WebView inside an infinite-
+        // height scroll container gets measured with zero height by the Android view
+        // system and renders nothing.
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
         ) {
             when {
-                // ── Loading ──────────────────────────────────────────────────
                 isLoading -> {
-                    Box(
-                        Modifier.fillMaxWidth().height(300.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = EnactGreen)
                             Spacer(Modifier.height(12.dp))
@@ -278,10 +267,9 @@ fun RecordingViewerScreen(
                     }
                 }
 
-                // ── Error ────────────────────────────────────────────────────
                 loadError != null -> {
                     Box(
-                        Modifier.fillMaxWidth().height(300.dp).padding(24.dp),
+                        Modifier.fillMaxSize().padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -296,12 +284,8 @@ fun RecordingViewerScreen(
                     }
                 }
 
-                // ── No data ──────────────────────────────────────────────────
                 points.isEmpty() -> {
-                    Box(
-                        Modifier.fillMaxWidth().height(300.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.BarChart, null,
                                 tint = EnactGreen.copy(alpha = 0.3f),
@@ -312,221 +296,231 @@ fun RecordingViewerScreen(
                     }
                 }
 
-                // ── Chart + Map ──────────────────────────────────────────────
                 else -> {
 
-                    // Stats strip
-                    stats?.let { (min, mean, max) ->
+                    // ── Upper panel: stats + readout + chart (scrollable) ──────
+                    // weight(1f) gives it all remaining space above the map.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        // Stats strip
+                        stats?.let { (min, mean, max) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(EnactDarkMid)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                StatChip("MIN",     "%.4f".format(min),  EnactGreen)
+                                StatChip("MEAN",    "%.4f".format(mean), EnactLime)
+                                StatChip("MAX",     "%.4f".format(max),  EnactError)
+                                StatChip("SAMPLES", "${points.size}",    EnactOnSurfaceDim)
+                            }
+                        }
+
+                        // Cursor readout
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (selectedPoint != null) EnactGreen.copy(alpha = 0.10f)
+                                    else EnactDark
+                                )
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            if (selectedPoint != null) {
+                                val pt = selectedPoint!!
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.MyLocation, null,
+                                        tint = EnactGreen, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "t = ${timeFmt.format(Date(pt.timestampMs))}",
+                                        fontSize = 12.sp, color = EnactOnSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        "%.6f".format(pt.value) +
+                                            if (recordingFile.signalUnit.isNotBlank())
+                                                "  ${recordingFile.signalUnit}" else "",
+                                        fontSize = 13.sp, color = EnactGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "#${selectedIndex + 1}",
+                                        fontSize = 11.sp, color = EnactOnSurfaceDim
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    "Tap or drag on graph to trace value",
+                                    fontSize = 12.sp,
+                                    color = EnactOnSurfaceDim.copy(alpha = 0.4f)
+                                )
+                            }
+                        }
+
+                        // ── MPAndroidChart ─────────────────────────────────────
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                                .padding(bottom = 4.dp, start = 4.dp, end = 4.dp),
+                            factory = { ctx ->
+                                LineChart(ctx).apply {
+                                    description.isEnabled     = false
+                                    legend.isEnabled          = false
+                                    setBackgroundColor(bgArgb)
+                                    setDrawGridBackground(false)
+                                    setTouchEnabled(true)
+                                    isDragEnabled             = true
+                                    // Independent X/Y zoom: setPinchZoom(false) means a
+                                    // predominantly-horizontal two-finger spread zooms X only;
+                                    // a predominantly-vertical spread zooms Y only.
+                                    isScaleXEnabled           = true
+                                    isScaleYEnabled           = true
+                                    setPinchZoom(false)
+                                    setDrawMarkers(false)
+                                    isHighlightPerDragEnabled = true
+                                    setNoDataText("No data")
+
+                                    xAxis.apply {
+                                        position             = XAxis.XAxisPosition.BOTTOM
+                                        setDrawGridLines(true)
+                                        gridColor            = AndroidColor.argb(40, 255, 255, 255)
+                                        textColor            = onSurfaceDimArgb
+                                        textSize             = 9f
+                                        labelCount           = 6
+                                        granularity          = 0.001f
+                                        isGranularityEnabled = true
+                                        setAvoidFirstLastClipping(true)
+                                        valueFormatter = object : ValueFormatter() {
+                                            override fun getFormattedValue(v: Float): String =
+                                                if (v < 60f) "%.1fs".format(v)
+                                                else         "%dm %ds".format(v.toInt() / 60, v.toInt() % 60)
+                                        }
+                                    }
+                                    axisLeft.apply {
+                                        setDrawGridLines(true)
+                                        gridColor  = AndroidColor.argb(30, 255, 255, 255)
+                                        textColor  = onSurfaceDimArgb
+                                        textSize   = 9f
+                                        setDrawAxisLine(false)
+                                    }
+                                    axisRight.isEnabled = false
+
+                                    // ── Custom renderer: large red circle on selected point ──
+                                    val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                        style = android.graphics.Paint.Style.FILL
+                                        color = AndroidColor.rgb(220, 0, 0)
+                                    }
+                                    val ringPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                        style       = android.graphics.Paint.Style.STROKE
+                                        color       = AndroidColor.WHITE
+                                        strokeWidth = 3f
+                                    }
+                                    renderer = object : com.github.mikephil.charting.renderer.LineChartRenderer(
+                                        this, animator, viewPortHandler
+                                    ) {
+                                        override fun drawHighlighted(
+                                            c: android.graphics.Canvas?,
+                                            indices: Array<out Highlight>?
+                                        ) {
+                                            c ?: return; indices ?: return
+                                            val data = mChart.data ?: return
+                                            for (high in indices) {
+                                                val set = data.getDataSetByIndex(high.dataSetIndex) ?: continue
+                                                val e   = data.getEntryForHighlight(high) ?: continue
+                                                val pix = mChart.getTransformer(set.axisDependency)
+                                                              .getPixelForValues(e.x, e.y)
+                                                val x = pix.x.toFloat()
+                                                val y = pix.y.toFloat()
+                                                c.drawCircle(x, y, 22f, ringPaint)
+                                                c.drawCircle(x, y, 18f, fillPaint)
+                                            }
+                                        }
+                                    }
+
+                                    setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                                        override fun onValueSelected(e: Entry?, h: Highlight?) {
+                                            val idx = e?.data as? Int ?: return
+                                            if (idx in points.indices) {
+                                                selectedPoint = points[idx]; selectedIndex = idx
+                                            }
+                                        }
+                                        override fun onNothingSelected() {
+                                            selectedPoint = null; selectedIndex = -1
+                                        }
+                                    })
+
+                                    onChartGestureListener = object : OnChartGestureListener {
+                                        override fun onChartGestureStart(me: MotionEvent?, g: ChartTouchListener.ChartGesture?) {}
+                                        override fun onChartGestureEnd(me: MotionEvent?, g: ChartTouchListener.ChartGesture?) {}
+                                        override fun onChartLongPressed(me: MotionEvent?) {}
+                                        override fun onChartDoubleTapped(me: MotionEvent?) {}
+                                        override fun onChartSingleTapped(me: MotionEvent?) {}
+                                        override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, vX: Float, vY: Float) {}
+                                        override fun onChartScale(me: MotionEvent?, sX: Float, sY: Float) {}
+                                        override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
+                                            me ?: return
+                                            val h = getHighlightByTouchPoint(me.x, me.y)
+                                            if (h != null) {
+                                                highlightValue(h, false)
+                                                val idx = data?.getEntryForHighlight(h)?.data as? Int ?: return
+                                                if (idx in points.indices) {
+                                                    selectedPoint = points[idx]; selectedIndex = idx
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    chartRef.value = this
+                                }
+                            },
+                            update = { /* intentionally empty — zoom preserved via LaunchedEffect(entries) */ }
+                        )
+                    } // end scrollable upper panel
+
+                    // ── OSM Location Trace Map — fixed height, outside the scroller ─
+                    // The WebView MUST be outside the verticalScroll container.
+                    // Inside a scroll container, children are measured with infinite
+                    // height; the Android view system then gives the WebView zero
+                    // actual pixels and it renders nothing.
+                    if (hasGps) {
+                        Divider(color = EnactDarkMid, thickness = 1.dp)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(EnactDarkMid)
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            StatChip("MIN",     "%.4f".format(min),  EnactGreen)
-                            StatChip("MEAN",    "%.4f".format(mean), EnactLime)
-                            StatChip("MAX",     "%.4f".format(max),  EnactError)
-                            StatChip("SAMPLES", "${points.size}",    EnactOnSurfaceDim)
-                        }
-                    }
-
-                    // Cursor readout
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                if (selectedPoint != null) EnactGreen.copy(alpha = 0.10f)
-                                else EnactDark
-                            )
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        if (selectedPoint != null) {
-                            val pt = selectedPoint!!
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.MyLocation, null,
-                                    tint = EnactGreen, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    "t = ${timeFmt.format(Date(pt.timestampMs))}",
-                                    fontSize = 12.sp, color = EnactOnSurface,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    "%.6f".format(pt.value) +
-                                        if (recordingFile.signalUnit.isNotBlank())
-                                            "  ${recordingFile.signalUnit}" else "",
-                                    fontSize = 13.sp, color = EnactGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "#${selectedIndex + 1}",
-                                    fontSize = 11.sp, color = EnactOnSurfaceDim
-                                )
-                            }
-                        } else {
+                            Icon(Icons.Default.LocationOn, null,
+                                tint = EnactGreen, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(4.dp))
                             Text(
-                                "Tap or drag on graph to trace value",
-                                fontSize = 12.sp,
-                                color = EnactOnSurfaceDim.copy(alpha = 0.4f)
+                                "LOCATION TRACE",
+                                fontSize = 10.sp, color = EnactOnSurfaceDim,
+                                letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold
                             )
                         }
-                    }
-
-                    // ── MPAndroidChart ────────────────────────────────────────
-                    // factory: create and fully configure the chart once.
-                    // update: intentionally empty — all data pushes happen in
-                    //         LaunchedEffect(entries) to avoid resetting zoom on recompose.
-                    AndroidView(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(320.dp)
-                            .padding(bottom = 4.dp, start = 4.dp, end = 4.dp),
-                        factory = { ctx ->
-                            LineChart(ctx).apply {
-                                description.isEnabled     = false
-                                legend.isEnabled          = false
-                                setBackgroundColor(bgArgb)
-                                setDrawGridBackground(false)
-                                setTouchEnabled(true)
-                                isDragEnabled             = true
-                                isScaleXEnabled           = true
-                                isScaleYEnabled           = true
-                                setPinchZoom(true)         // pinch-to-zoom enabled
-                                setDrawMarkers(false)
-                                isHighlightPerDragEnabled = true
-                                setNoDataText("No data")
-
-                                xAxis.apply {
-                                    position             = XAxis.XAxisPosition.BOTTOM
-                                    setDrawGridLines(true)
-                                    gridColor            = AndroidColor.argb(40, 255, 255, 255)
-                                    textColor            = onSurfaceDimArgb
-                                    textSize             = 9f
-                                    labelCount           = 6
-                                    granularity          = 0.001f
-                                    isGranularityEnabled = true
-                                    setAvoidFirstLastClipping(true)
-                                    valueFormatter = object : ValueFormatter() {
-                                        override fun getFormattedValue(v: Float): String =
-                                            if (v < 60f) "%.1fs".format(v)
-                                            else         "%dm %ds".format(v.toInt() / 60, v.toInt() % 60)
-                                    }
-                                }
-                                axisLeft.apply {
-                                    setDrawGridLines(true)
-                                    gridColor  = AndroidColor.argb(30, 255, 255, 255)
-                                    textColor  = onSurfaceDimArgb
-                                    textSize   = 9f
-                                    setDrawAxisLine(false)
-                                }
-                                axisRight.isEnabled = false
-
-                                // ── Custom renderer: large red filled circle on selected point ──
-                                // Paints are allocated once here in factory, not on every draw call.
-                                val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                    style = android.graphics.Paint.Style.FILL
-                                    color = AndroidColor.rgb(220, 0, 0)   // solid red
-                                }
-                                val ringPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                    style       = android.graphics.Paint.Style.STROKE
-                                    color       = AndroidColor.WHITE
-                                    strokeWidth = 3f
-                                }
-                                renderer = object : com.github.mikephil.charting.renderer.LineChartRenderer(
-                                    this, animator, viewPortHandler
-                                ) {
-                                    override fun drawHighlighted(
-                                        c: android.graphics.Canvas?,
-                                        indices: Array<out Highlight>?
-                                    ) {
-                                        c ?: return
-                                        indices ?: return
-                                        val data = mChart.data ?: return
-                                        for (high in indices) {
-                                            val set = data.getDataSetByIndex(high.dataSetIndex) ?: continue
-                                            val e   = data.getEntryForHighlight(high) ?: continue
-                                            val pix = mChart.getTransformer(set.axisDependency)
-                                                          .getPixelForValues(e.x, e.y)
-                                            val x = pix.x.toFloat()
-                                            val y = pix.y.toFloat()
-                                            // White ring (drawn first, underneath)
-                                            c.drawCircle(x, y, 22f, ringPaint)
-                                            // Solid red fill
-                                            c.drawCircle(x, y, 18f, fillPaint)
-                                        }
-                                    }
-                                }
-
-                                // ── Value selection listener ──────────────────
-                                setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
-                                    override fun onValueSelected(e: Entry?, h: Highlight?) {
-                                        val idx = e?.data as? Int ?: return
-                                        if (idx in points.indices) {
-                                            selectedPoint = points[idx]
-                                            selectedIndex = idx
-                                        }
-                                    }
-                                    override fun onNothingSelected() {
-                                        selectedPoint = null
-                                        selectedIndex = -1
-                                    }
-                                })
-
-                                // ── Gesture listener: continuous drag tracing ──
-                                onChartGestureListener = object : OnChartGestureListener {
-                                    override fun onChartGestureStart(me: MotionEvent?, g: ChartTouchListener.ChartGesture?) {}
-                                    override fun onChartGestureEnd(me: MotionEvent?, g: ChartTouchListener.ChartGesture?) {}
-                                    override fun onChartLongPressed(me: MotionEvent?) {}
-                                    override fun onChartDoubleTapped(me: MotionEvent?) {}
-                                    override fun onChartSingleTapped(me: MotionEvent?) {}
-                                    override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, vX: Float, vY: Float) {}
-                                    override fun onChartScale(me: MotionEvent?, sX: Float, sY: Float) {}
-                                    override fun onChartTranslate(me: MotionEvent?, dX: Float, dY: Float) {
-                                        me ?: return
-                                        val h = getHighlightByTouchPoint(me.x, me.y)
-                                        if (h != null) {
-                                            highlightValue(h, false)
-                                            val idx = data?.getEntryForHighlight(h)?.data as? Int ?: return
-                                            if (idx in points.indices) {
-                                                selectedPoint = points[idx]
-                                                selectedIndex = idx
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Store reference so LaunchedEffect can push data into it
-                                chartRef.value = this
-                            }
-                        },
-                        update = { /* intentionally empty — zoom state must not be reset here */ }
-                    )
-
-                    // ── OSM Location Trace Map ────────────────────────────────
-                    // Shown only when the CSV contains GPS columns.
-                    if (hasGps) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "  LOCATION TRACE",
-                            fontSize   = 10.sp,
-                            color      = EnactOnSurfaceDim,
-                            letterSpacing = 1.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier   = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
 
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(360.dp)
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                                .height(320.dp),   // explicit fixed height — required outside a scroller
                             factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.apply {
+                                WebView(ctx).also { wv ->
+                                    wv.settings.apply {
                                         javaScriptEnabled    = true
                                         domStorageEnabled    = true
+                                        // MIXED_CONTENT_ALWAYS_ALLOW lets the WebView load
+                                        // OSM tile images (https) alongside the inline HTML.
                                         mixedContentMode     = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                         cacheMode            = WebSettings.LOAD_DEFAULT
                                         setSupportZoom(true)
@@ -535,27 +529,22 @@ fun RecordingViewerScreen(
                                         useWideViewPort      = true
                                         loadWithOverviewMode = true
                                     }
-                                    webViewClient = WebViewClient()
-                                    setBackgroundColor(AndroidColor.rgb(0x1a, 0x1f, 0x1a))
-                                    mapWebView.value = this
-                                }
-                            },
-                            update = { wv ->
-                                // update() runs on every recompose, so it always has the
-                                // current osmHtmlState value — load only when non-empty and
-                                // only when the content has actually changed.
-                                val html = osmHtmlState.value
-                                if (html.isNotEmpty() && wv.tag != html.hashCode()) {
-                                    wv.tag = html.hashCode()
+                                    wv.webViewClient = WebViewClient()
+                                    wv.setBackgroundColor(AndroidColor.rgb(0x1a, 0x1f, 0x1a))
+                                    mapWebView.value = wv
+                                    // osmHtml is already computed (remember(gpsPoints)) —
+                                    // safe to load immediately in factory since hasGps==true
+                                    // guarantees it is non-empty.
                                     wv.loadDataWithBaseURL(
                                         "https://www.openstreetmap.org/",
-                                        html,
+                                        osmHtml,
                                         "text/html",
                                         "UTF-8",
                                         null
                                     )
                                 }
-                            }
+                            },
+                            update = { /* map content is static; selection driven via JS in LaunchedEffect */ }
                         )
                     }
                 }
@@ -564,77 +553,49 @@ fun RecordingViewerScreen(
     }
 }
 
-// ── OSM map HTML — Leaflet.js 1.9.4 via unpkg CDN ────────────────────────────
-private fun buildOsmHtml(centLat: Double, centLon: Double, coordsJson: String): String = """
-<!DOCTYPE html>
+// ── OSM map HTML ───────────────────────────────────────────────────────────────
+// Leaflet CSS and JS are loaded from unpkg.com CDN (no integrity/crossorigin
+// attributes — SRI checks fail inside WebView's synthetic origin context).
+// OSM raster tiles are fetched at runtime; INTERNET permission is declared in
+// the manifest and MIXED_CONTENT_ALWAYS_ALLOW is set on the WebView.
+private fun buildOsmHtml(centLat: Double, centLon: Double, coordsJson: String): String = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  html, body, #map {
-    margin: 0; padding: 0;
-    width: 100%; height: 100%;
-    background: #1a1f1a;
-    font-family: sans-serif;
-  }
+html,body,#map{margin:0;padding:0;width:100%;height:100%;background:#1a1f1a;}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-  var map = L.map('map', {
-    center: [$centLat, $centLon],
-    zoom: 16
-  });
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19
-  }).addTo(map);
-
-  var coords = [$coordsJson];
-
-  // Cyan polyline connecting all measurement positions
-  var trace = L.polyline(coords, {
-    color: '#00e5ff', weight: 2.5, opacity: 0.85
-  }).addTo(map);
-
-  // Small cyan dot at every individual measurement position
-  coords.forEach(function(c) {
-    L.circleMarker(c, {
-      radius: 3, color: '#00e5ff',
-      fillColor: '#00e5ff', fillOpacity: 1.0, weight: 1
-    }).addTo(map);
-  });
-
-  // Red circle for the currently selected measurement (hidden initially)
-  var selMarker = L.circleMarker([0, 0], {
-    radius: 10, color: '#ffffff',
-    fillColor: '#dd0000', fillOpacity: 0.92, weight: 3
-  });
-  var selVisible = false;
-
-  function moveSelected(lat, lon) {
-    selMarker.setLatLng([lat, lon]);
-    if (!selVisible) { selMarker.addTo(map); selVisible = true; }
-    map.panTo([lat, lon], { animate: true, duration: 0.25 });
-  }
-
-  function clearSelected() {
-    if (selVisible) { map.removeLayer(selMarker); selVisible = false; }
-  }
-
-  // Fit view to the full trace on load
-  if (coords.length > 1) {
-    map.fitBounds(trace.getBounds(), { padding: [16, 16] });
-  }
+var map=L.map('map',{center:[$centLat,$centLon],zoom:16});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom:19
+}).addTo(map);
+var coords=[$coordsJson];
+var trace=L.polyline(coords,{color:'#00e5ff',weight:2.5,opacity:0.85}).addTo(map);
+coords.forEach(function(c){
+  L.circleMarker(c,{radius:3,color:'#00e5ff',fillColor:'#00e5ff',fillOpacity:1.0,weight:1}).addTo(map);
+});
+var selMarker=L.circleMarker([0,0],{radius:10,color:'#ffffff',fillColor:'#dd0000',fillOpacity:0.92,weight:3});
+var selVisible=false;
+function moveSelected(lat,lon){
+  selMarker.setLatLng([lat,lon]);
+  if(!selVisible){selMarker.addTo(map);selVisible=true;}
+  map.panTo([lat,lon],{animate:true,duration:0.25});
+}
+function clearSelected(){
+  if(selVisible){map.removeLayer(selMarker);selVisible=false;}
+}
+if(coords.length>1){map.fitBounds(trace.getBounds(),{padding:[16,16]});}
 </script>
 </body>
-</html>
-""".trimIndent()
+</html>"""
 
 @Composable
 private fun StatChip(label: String, value: String, color: Color) {
