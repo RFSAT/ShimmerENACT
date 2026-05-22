@@ -47,6 +47,15 @@
         android:name="android.hardware.bluetooth"
         android:required="true" />
 
+    <!-- Declare support for all screen sizes including tablets, foldables, ChromeOS -->
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:resizeable="true"
+        android:anyDensity="true" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -59,7 +68,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboard|keyboardHidden|navigation"
             android:theme="@style/Theme.ShimmerENACT.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

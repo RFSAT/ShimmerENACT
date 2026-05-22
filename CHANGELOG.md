@@ -2,6 +2,37 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v2.2.3
+
+### Changed
+- **Large-screen / multi-window support added to `AndroidManifest.xml`** —
+  Google Play flagged three issues under its large-screen quality guidelines:
+
+  1. *Orientation locked to portrait* — `android:screenOrientation="portrait"` on
+     `MainActivity` was removed. The app now follows the device's natural
+     orientation. All screens use `fillMaxSize()`, `weight()`, and `LazyColumn`
+     throughout, so they reflow correctly in landscape and on tablets without
+     any layout code changes.
+
+  2. *Activity not resizeable* — `android:resizeableActivity="true"` added to
+     `MainActivity`. This enables split-screen, freeform windowing (ChromeOS /
+     Samsung DeX), and picture-in-picture contexts.
+
+  3. *Configuration changes causing Activity recreation* —
+     `android:configChanges` set to
+     `orientation|screenSize|screenLayout|smallestScreenSize|density|keyboard|keyboardHidden|navigation`.
+     Without this, every rotation or window resize triggers a full Activity
+     recreation, which disconnects the active Bluetooth sensor session and
+     loses the streaming state. With this attribute, the Activity handles
+     the configuration change itself and Compose recomposes in place —
+     the Bluetooth connection is preserved across rotations and resizes.
+
+  4. *Screen-size support declaration* — `<supports-screens>` element added
+     with `smallScreens`, `normalScreens`, `largeScreens`, `xlargeScreens`,
+     `resizeable`, and `anyDensity` all set to `true`. This explicitly signals
+     to the Play Store that the app is designed for all form factors including
+     tablets, foldables, and ChromeOS.
+
 ## v2.2.2
 
 ### Fixed
