@@ -36,6 +36,9 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- Internet access — required for OpenStreetMap tile loading in RecordingViewerScreen -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Vibrate for alerts -->
     <uses-permission android:name="android.permission.VIBRATE" />
 

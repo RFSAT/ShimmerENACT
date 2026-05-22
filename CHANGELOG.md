@@ -2,7 +2,45 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
-## v1.8.0
+## v2.0.0
+
+### Added
+- **Graph: data-point circles** — every measurement is now marked with a small filled
+  circle in the same colour as the signal line, giving a clear visual indication of
+  sample density and individual sample positions. Circles are drawn for datasets up to
+  5 000 points; above that threshold they are suppressed to prevent a solid-band effect
+  at very high sample rates.
+- **Graph: red selected-point indicator** — the previously used vertical + horizontal
+  crosshair lines are replaced by a prominent red filled circle (white border) drawn
+  exactly on the selected measurement. Selection is updated continuously during tap and
+  drag, giving real-time tracing without visual clutter.
+- **Location trace map** — when a recording CSV contains GPS columns
+  (`latitude_deg`, `longitude_deg`) a scrollable OpenStreetMap panel is shown beneath
+  the signal graph. The map displays:
+  - A cyan polyline connecting all measurement positions in chronological order
+  - A small cyan dot at every individual measurement position
+  - A red circle (white border) that moves to the GPS position of the currently selected
+    measurement as the user taps or drags on the graph; the map pans smoothly to follow
+- **OpenStreetMap integration (Leaflet.js)** — the location map is rendered inside an
+  in-process `WebView` using [Leaflet.js 1.9.4](https://leafletjs.com/) loaded via CDN.
+  OSM standard raster tiles (`tile.openstreetmap.org`) are used. No API key is required.
+  The `INTERNET` permission is declared in `AndroidManifest.xml`.
+- **Versioning scheme** — version numbering migrated to
+  `<major>.<minor>.<revision>` semantics:
+  - **major** — incremented for breaking or architectural changes
+  - **minor** — incremented for significant new features
+  - **revision** — incremented for bug fixes and corrections only
+  - This release is v2.0.0 as the first version under the new scheme
+
+### Changed
+- `RecordingViewerScreen`: screen is now vertically scrollable so the map panel can
+  sit below the chart without clipping on small-screen devices
+- CSV parser extended to detect and read `latitude_deg` and `longitude_deg` columns
+  (written by the v1.8.0+ `LocationRepository`); values are stored in `CsvPoint` and
+  passed to the map renderer
+- `versionCode` bumped to 53; `versionName` set to `"2.0.0"`
+
+
 
 ### Added
 - **GPS location tagging in recordings**: every CSV row now includes four additional
