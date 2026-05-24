@@ -2,6 +2,21 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.2
+
+### Changed
+- **About screen — Developed by**: added a second link button pointing to the RFSAT
+  portal page dedicated to the ENACT project
+  (`rfsat.com/…/enact-horizon-2-1-health`), beneath the existing `www.rfsat.com`
+  button.
+- **About screen — EU Funded Project**: added a second link button for the official
+  ENACT project website (`enact-he.eu`), beneath the existing CORDIS button.
+- **About screen — Hardware Platform**: replaced the two-unit summary sentence with
+  a structured bullet list of all nine supported Shimmer3 units, matching the full
+  set available on the Home/Sensors screen:
+  GSR+, EXG, IMU, EMG, Ebio, Bridge Amplifier+, 200g IMU, PROTO3 Deluxe, Custom.
+  Each entry shows the unit name (bold), SR number, and a brief signal summary.
+
 ## v3.1.1
 
 ### Fixed

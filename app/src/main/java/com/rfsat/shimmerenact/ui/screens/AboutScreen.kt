@@ -91,6 +91,20 @@ fun AboutScreen(onBack: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                     Text("www.rfsat.com", color = EnactGreen, fontSize = 13.sp)
                 }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://rfsat.com/index.php/en/projects-and-activities/ongoing-projects/enact-horizon-2-1-health")))
+                    },
+                    border = BorderStroke(1.dp, EnactGreen.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.OpenInBrowser, null, tint = EnactGreen,
+                        modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("ENACT on RFSAT portal", color = EnactGreen, fontSize = 13.sp)
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -128,6 +142,22 @@ fun AboutScreen(onBack: () -> Unit) {
                     Text("CORDIS Project Page",
                         color = androidx.compose.ui.graphics.Color(0xFF0065AE), fontSize = 13.sp)
                 }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://enact-he.eu")))
+                    },
+                    border = BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF0065AE).copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.OpenInBrowser, null,
+                        tint = androidx.compose.ui.graphics.Color(0xFF0065AE),
+                        modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("enact-he.eu  –  Official Project Website",
+                        color = androidx.compose.ui.graphics.Color(0xFF0065AE), fontSize = 13.sp)
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -142,12 +172,39 @@ fun AboutScreen(onBack: () -> Unit) {
                     color = EnactOnSurface, fontSize = 14.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "This application interfaces with Shimmer3 wearable sensing platforms (shimmer-research.com). " +
-                    "Supported units: GSR+ (SR48-5-0) and ExG (SR47-6-0).",
+                    "This application interfaces with Shimmer3 wearable sensing platforms " +
+                    "(shimmersensing.com). Supported units:",
                     fontSize = 13.sp,
                     color = EnactOnSurface.copy(alpha = 0.65f),
                     lineHeight = 18.sp
                 )
+                Spacer(Modifier.height(6.dp))
+                val units = listOf(
+                    "GSR+ Unit" to "SR48-5-0  ·  Galvanic Skin Response, PPG, 9-DoF IMU",
+                    "EXG Unit" to "SR47-6-0  ·  ECG, EMG, EEG via dual ADS1292R",
+                    "IMU Unit" to "SR31  ·  Accel LN+WR, Gyro, Mag, Pressure, Temperature",
+                    "EMG Unit" to "SR47-6-0 (EMG mode)  ·  Surface EMG, 2 channels, 9-DoF IMU",
+                    "Ebio Unit" to "SR59  ·  ECG + Bioimpedance/Respiration, 9-DoF IMU",
+                    "Bridge Amplifier+" to "SR37  ·  Strain gauge / load cell, skin temp, 9-DoF IMU",
+                    "200g IMU" to "SR31-200G  ·  High-g ±200g accel (ADXL377) + full 9-DoF IMU",
+                    "PROTO3 Deluxe" to "SR50  ·  4× analogue input (3.5 mm TRRS), 9-DoF IMU",
+                    "Custom" to "User-defined  ·  Generic Shimmer3 configuration"
+                )
+                units.forEach { (name, desc) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text("•", fontSize = 12.sp,
+                            color = EnactLime, modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                color = EnactOnSurface)
+                            Text(desc, fontSize = 11.sp,
+                                color = EnactOnSurface.copy(alpha = 0.55f), lineHeight = 15.sp)
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(12.dp))
