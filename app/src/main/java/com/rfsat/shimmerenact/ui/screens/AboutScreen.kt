@@ -76,8 +76,18 @@ fun AboutScreen(onBack: () -> Unit) {
                 Text("RFSAT Limited", fontWeight = FontWeight.Bold, color = EnactOnSurface,
                     fontSize = 15.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("Specialising in IoT, remote sensing and environmental monitoring solutions.",
-                    fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.65f), lineHeight = 18.sp)
+                Text(
+                    "RFSAT Limited is a non-profit research-performing SME, established in Ireland, " +
+                    "with research offices also in Athens (Greece). Its operation focuses on research " +
+                    "and development through national and international research funding, and industrial " +
+                    "consultancy. Focus areas include hybrid indoor/outdoor positioning, GIS systems/" +
+                    "services, networked audio-visual systems, VR/AR/XR for Virtual Worlds, immersive " +
+                    "mixed-reality U/Is for gaming and entertainment, autonomous systems (UAS, UGV and " +
+                    "UUV), Critical Infrastructure (CI) protection, Cyber-Physical security systems, " +
+                    "Machine Learning and Cognitive Artificial Intelligence (AI), Future Internet and " +
+                    "5G/6G Mobile Communications etc.",
+                    fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.65f), lineHeight = 18.sp
+                )
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = {

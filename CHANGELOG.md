@@ -17,6 +17,18 @@ RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
   GSR+, EXG, IMU, EMG, Ebio, Bridge Amplifier+, 200g IMU, PROTO3 Deluxe, Custom.
   Each entry shows the unit name (bold), SR number, and a brief signal summary.
 
+## v3.1.2
+
+### Changed
+- **About screen — "Developed by" description** — the short placeholder text
+  ("Specialising in IoT, remote sensing and environmental monitoring solutions.")
+  is replaced with the full RFSAT Limited company profile: non-profit
+  research-performing SME, established in Ireland with research offices in Athens
+  (Greece); focus areas listed include hybrid positioning, GIS, networked A/V,
+  VR/AR/XR, immersive U/Is, autonomous systems (UAS/UGV/UUV), Critical
+  Infrastructure protection, Cyber-Physical security, Machine Learning and
+  Cognitive AI, and Future Internet / 5G/6G Mobile Communications.
+
 ## v3.1.1
 
 ### Fixed
