@@ -80,13 +80,20 @@ fun AboutScreen(onBack: () -> Unit) {
                     "RFSAT Limited is a non-profit research-performing SME, established in Ireland, " +
                     "with research offices also in Athens (Greece). Its operation focuses on research " +
                     "and development through national and international research funding, and industrial " +
-                    "consultancy. Focus areas include hybrid indoor/outdoor positioning, GIS systems/" +
-                    "services, networked audio-visual systems, VR/AR/XR for Virtual Worlds, immersive " +
+                    "consultancy.",
+                    fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.65f), lineHeight = 18.sp,
+                    textAlign = TextAlign.Justify
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Focus areas include hybrid indoor/outdoor positioning, GIS systems/services, " +
+                    "networked audio-visual systems, VR/AR/XR for Virtual Worlds, immersive " +
                     "mixed-reality U/Is for gaming and entertainment, autonomous systems (UAS, UGV and " +
                     "UUV), Critical Infrastructure (CI) protection, Cyber-Physical security systems, " +
                     "Machine Learning and Cognitive Artificial Intelligence (AI), Future Internet and " +
                     "5G/6G Mobile Communications etc.",
-                    fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.65f), lineHeight = 18.sp
+                    fontSize = 13.sp, color = EnactOnSurface.copy(alpha = 0.65f), lineHeight = 18.sp,
+                    textAlign = TextAlign.Justify
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(

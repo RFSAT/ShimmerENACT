@@ -2,6 +2,15 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.3
+
+### Changed
+- **About screen — "Developed by" text formatting** — the RFSAT Limited description
+  is now fully justified (`TextAlign.Justify`) and split into two paragraphs: the
+  first covers the company overview (type, location, operational focus); the second
+  begins with "Focus areas include…" and lists the research domains. A `Spacer`
+  of 8 dp separates the two paragraphs.
+
 ## v3.1.2
 
 ### Changed
