@@ -2,6 +2,32 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.1
+
+### Fixed
+- **Compile errors: non-exhaustive `when` expressions (4 locations)** —
+  Adding 6 new `SensorType` enum members in v3.1.0 left four `when` expressions
+  without branches for the new types. Kotlin requires `when` used as a statement
+  (and as an expression) on a sealed/enum type to be exhaustive.
+
+  Locations fixed:
+
+  | File | Function | Added branches |
+  |------|----------|----------------|
+  | `ShimmerBluetoothManager.kt:243` | `defaultBitmapForType()` | IMU, EMG, EBIO, BRIDGE_AMP, IMU_200G, PROTO3_DELUXE |
+  | `ShimmerViewModel.kt:356` | `resetAllSignalRates()` | same 6 |
+  | `ShimmerViewModel.kt:446` | `toggleRecordingSignal()` | same 6 |
+  | `ShimmerViewModel.kt:458` | `setRecordingSignals()` | same 6 |
+
+  `defaultBitmapForType()` now returns the correct sensor bitmap for each new
+  unit type, matching the LogAndStream protocol bitmap bits:
+  - **IMU**: accel LN + gyro + mag + battery + wide-range accel + BMP280
+  - **EMG**: accel + gyro + ExG Chip1 24-bit + battery (Chip2 absent)
+  - **Ebio**: accel + gyro + ExG Chip1 24-bit + ExG Chip2 24-bit + battery
+  - **Bridge Amp+**: accel + gyro + battery + `SENSOR_b1_BRIDGE_AMP` + wide-range accel
+  - **200g IMU**: accel LN + gyro + mag + ext ADC channels (high-g) + battery + wide-range accel
+  - **PROTO3 Deluxe**: accel + gyro + ext ADC channels + battery + wide-range accel + bridge amp
+
 ## v3.1.0
 
 ### Added — Ebio Unit (SR59)

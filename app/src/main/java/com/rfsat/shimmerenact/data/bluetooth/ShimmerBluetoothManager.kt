@@ -250,6 +250,39 @@ class ShimmerBluetoothManager(private val context: Context) {
             ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
             ShimmerProtocol.SENSOR_EXG1_24BIT or ShimmerProtocol.SENSOR_EXG2_24BIT,
             ShimmerProtocol.SENSOR_VBATT, 0)
+        // IMU: base board only — accel, gyro, mag, battery; BMP280 added if supported
+        SensorType.IMU -> intArrayOf(
+            ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or ShimmerProtocol.SENSOR_MAG,
+            ShimmerProtocol.SENSOR_VBATT or ShimmerProtocol.SENSOR_b1_D_ACCEL,
+            ShimmerProtocol.SENSOR_b2_BMP280)
+        // EMG: Chip1 only (same SR47 hardware as EXG, Chip2 disabled)
+        SensorType.EMG -> intArrayOf(
+            ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
+            ShimmerProtocol.SENSOR_EXG1_24BIT,
+            ShimmerProtocol.SENSOR_VBATT, 0)
+        // Ebio: both ADS chips active (ECG on Chip1, bioimpedance on Chip2)
+        SensorType.EBIO -> intArrayOf(
+            ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
+            ShimmerProtocol.SENSOR_EXG1_24BIT or ShimmerProtocol.SENSOR_EXG2_24BIT,
+            ShimmerProtocol.SENSOR_VBATT, 0)
+        // Bridge Amp+: bridge high+low on internal ADC + skin temp + IMU
+        SensorType.BRIDGE_AMP -> intArrayOf(
+            ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO,
+            ShimmerProtocol.SENSOR_VBATT or ShimmerProtocol.SENSOR_b1_BRIDGE_AMP or
+            ShimmerProtocol.SENSOR_b1_D_ACCEL, 0)
+        // 200g IMU: SR31 base + high-g accel on external ADC channels
+        SensorType.IMU_200G -> intArrayOf(
+            ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
+            ShimmerProtocol.SENSOR_MAG or
+            ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0,
+            ShimmerProtocol.SENSOR_VBATT or ShimmerProtocol.SENSOR_b1_D_ACCEL,
+            ShimmerProtocol.SENSOR_b2_EXG1_16BIT)   // reused channel bit for ext ADC15
+        // PROTO3 Deluxe: 4 analog inputs + IMU
+        SensorType.PROTO3_DELUXE -> intArrayOf(
+            ShimmerProtocol.SENSOR_A_ACCEL or ShimmerProtocol.SENSOR_GYRO or
+            ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0,
+            ShimmerProtocol.SENSOR_VBATT or ShimmerProtocol.SENSOR_b1_D_ACCEL or
+            ShimmerProtocol.SENSOR_b1_BRIDGE_AMP, 0)
         SensorType.CUSTOM -> intArrayOf(
             ShimmerProtocol.SENSOR_EXP_BOARD_A7 or ShimmerProtocol.SENSOR_EXP_BOARD_A0, 0, 0)
     }

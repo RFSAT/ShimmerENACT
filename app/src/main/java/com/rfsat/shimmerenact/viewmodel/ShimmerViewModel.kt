@@ -354,9 +354,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     fun resetAllSignalRates(type: SensorType) {
         AppLog.i("VM", "Resetting all signal rates to hardware rate [${type.name}]")
         when (type) {
-            SensorType.GSR_PLUS -> _gsrConfig.update { it.copy(signalRatesHz = emptyMap()) }
-            SensorType.EXG      -> _exgConfig.update { it.copy(signalRatesHz = emptyMap()) }
-            SensorType.CUSTOM   -> _customConfig.update { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.GSR_PLUS      -> _gsrConfig.update    { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.EXG           -> _exgConfig.update    { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.IMU           -> _imuConfig.update    { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.EMG           -> _emgConfig.update    { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.EBIO          -> _ebioConfig.update   { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.BRIDGE_AMP    -> _bridgeConfig.update { it.copy(signalRatesHz = emptyMap()) }
+            SensorType.IMU_200G      -> _imu200gConfig.update{ it.copy(signalRatesHz = emptyMap()) }
+            SensorType.PROTO3_DELUXE -> _proto3dConfig.update{ it.copy(signalRatesHz = emptyMap()) }
+            SensorType.CUSTOM        -> _customConfig.update { it.copy(signalRatesHz = emptyMap()) }
         }
     }
 
@@ -444,9 +450,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             return config.copy(recordingSignals = stored)
         }
         when (type) {
-            SensorType.GSR_PLUS -> _gsrConfig.update { toggle(it) }
-            SensorType.EXG      -> _exgConfig.update { toggle(it) }
-            SensorType.CUSTOM   -> _customConfig.update { toggle(it) }
+            SensorType.GSR_PLUS      -> _gsrConfig.update    { toggle(it) }
+            SensorType.EXG           -> _exgConfig.update    { toggle(it) }
+            SensorType.IMU           -> _imuConfig.update    { toggle(it) }
+            SensorType.EMG           -> _emgConfig.update    { toggle(it) }
+            SensorType.EBIO          -> _ebioConfig.update   { toggle(it) }
+            SensorType.BRIDGE_AMP    -> _bridgeConfig.update { toggle(it) }
+            SensorType.IMU_200G      -> _imu200gConfig.update{ toggle(it) }
+            SensorType.PROTO3_DELUXE -> _proto3dConfig.update{ toggle(it) }
+            SensorType.CUSTOM        -> _customConfig.update  { toggle(it) }
         }
     }
 
@@ -456,9 +468,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         val allKeys = signalsForType(type).map { it.key }.toSet()
         val stored = if (keys == allKeys) emptySet() else keys
         when (type) {
-            SensorType.GSR_PLUS -> _gsrConfig.update { it.copy(recordingSignals = stored) }
-            SensorType.EXG      -> _exgConfig.update { it.copy(recordingSignals = stored) }
-            SensorType.CUSTOM   -> _customConfig.update { it.copy(recordingSignals = stored) }
+            SensorType.GSR_PLUS      -> _gsrConfig.update    { it.copy(recordingSignals = stored) }
+            SensorType.EXG           -> _exgConfig.update    { it.copy(recordingSignals = stored) }
+            SensorType.IMU           -> _imuConfig.update    { it.copy(recordingSignals = stored) }
+            SensorType.EMG           -> _emgConfig.update    { it.copy(recordingSignals = stored) }
+            SensorType.EBIO          -> _ebioConfig.update   { it.copy(recordingSignals = stored) }
+            SensorType.BRIDGE_AMP    -> _bridgeConfig.update { it.copy(recordingSignals = stored) }
+            SensorType.IMU_200G      -> _imu200gConfig.update{ it.copy(recordingSignals = stored) }
+            SensorType.PROTO3_DELUXE -> _proto3dConfig.update{ it.copy(recordingSignals = stored) }
+            SensorType.CUSTOM        -> _customConfig.update  { it.copy(recordingSignals = stored) }
         }
     }
 
