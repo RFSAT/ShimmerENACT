@@ -31,6 +31,12 @@ object ShimmerProtocol {
     const val SENSOR_b2_EXG2_16BIT: Int = 0x08
     const val SENSOR_EXG1_16BIT:    Int = SENSOR_b2_EXG1_16BIT
     const val SENSOR_EXG2_16BIT:    Int = SENSOR_b2_EXG2_16BIT
+    // Byte 1 additional
+    const val SENSOR_b1_BRIDGE_AMP: Int = 0x80  // Bridge Amplifier
+    // Byte 2 additional (MPU9250 / BMP280 — IMU unit)
+    const val SENSOR_b2_ACCEL_MPU:  Int = 0x40  // MPU9250 accel
+    const val SENSOR_b2_MAG_MPU:    Int = 0x20  // MPU9250 mag
+    const val SENSOR_b2_BMP280:     Int = 0x04  // BMP280 pressure
 
     // ─── Channel codes ────────────────────────────────────────────────────────
     // Source: Official Shimmer3 protocol (matmont/shimmer3 util.py)
@@ -74,6 +80,17 @@ object ShimmerProtocol {
     const val CH_EXG1_CH2_16:  Int = 0x20
     const val CH_EXG2_CH1_16:  Int = 0x21
     const val CH_EXG2_CH2_16:  Int = 0x22
+    // MPU9250 magnetometer (separate from LSM303 mag above)
+    const val CH_MPU9250_MAG_X: Int = 0x23  // i16  2B LE
+    const val CH_MPU9250_MAG_Y: Int = 0x24
+    const val CH_MPU9250_MAG_Z: Int = 0x25
+    // BMP280 pressure and temperature (IMU unit)
+    const val CH_BMP280_PRESS:  Int = 0x2A  // u32 compensated, 4B LE
+    const val CH_BMP280_TEMP:   Int = 0x2B  // i32 compensated, 4B LE
+    // LSM303AHTR wide-range accel (updated chip on newer Shimmer3)
+    const val CH_ACCEL_AHTR_X:  Int = 0x2C  // i16  2B LE
+    const val CH_ACCEL_AHTR_Y:  Int = 0x2D
+    const val CH_ACCEL_AHTR_Z:  Int = 0x2E
 
     // ─── Timing ───────────────────────────────────────────────────────────────
     const val RESPONSE_TIMEOUT_MS: Long   = 3000L
@@ -96,6 +113,7 @@ object ShimmerProtocol {
         CH_EXG1_STATUS, CH_EXG2_STATUS             -> 1
         CH_EXG1_CH1_24, CH_EXG1_CH2_24,
         CH_EXG2_CH1_24, CH_EXG2_CH2_24             -> 3
+        CH_BMP280_PRESS, CH_BMP280_TEMP            -> 4   // 32-bit compensated
         else                                        -> 2
     }
 
@@ -118,21 +136,37 @@ object ShimmerProtocol {
         if (b0 and SENSOR_EXG2_24BIT    != 0) size += 7
         if (b2 and SENSOR_b2_EXG1_16BIT != 0) size += 5
         if (b2 and SENSOR_b2_EXG2_16BIT != 0) size += 5
+        if (b2 and SENSOR_b2_ACCEL_MPU   != 0) size += 6
+        if (b2 and SENSOR_b2_MAG_MPU     != 0) size += 6
+        if (b2 and SENSOR_b2_BMP280      != 0) size += 8  // 4B press + 4B temp
         return size
     }
 
     // ─── Calibration parameters ───────────────────────────────────────────────
     data class CalibrationParams(
-        val accelSens:   Double      = 83.0,
-        val accelOffset: DoubleArray = doubleArrayOf(2081.0, 2081.0, 2087.0),
-        val gyroSens:    Double      = 65.5,
-        val gyroOffset:  DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
-        val magSens:     Double      = 1100.0,
-        val magOffset:   DoubleArray = doubleArrayOf(0.0, 0.0, 0.0)
+        val accelSens:      Double      = 83.0,
+        val accelOffset:    DoubleArray = doubleArrayOf(2081.0, 2081.0, 2087.0),
+        val accelWrSens:    Double      = 1671.0,      // LSM303AHTR ±8g default
+        val accelWrOffset:  DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
+        val gyroSens:       Double      = 65.5,
+        val gyroOffset:     DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
+        val magSens:        Double      = 1100.0,
+        val magOffset:      DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
+        // BMP280 compensation values — read from device EEPROM in production;
+        // defaults give approximate sea-level readings without calibration.
+        val bmp280DigsT:    IntArray    = intArrayOf(27504, 26435, -1000), // T1, T2, T3
+        val bmp280DigsP:    IntArray    = intArrayOf(36477, -10685, 3024,  // P1..P9
+                                                      2855, 31, 15500,
+                                                      -14600, 6000, 0),
+        // ADS1292R ExG / EMG gain (default ±4 range, gain=4, Vref=2.42V)
+        // LSB = Vref / (2^23 * gain) = 2.42 / (2^23 * 4) → ~72 nV/LSB
+        // Output in µV: raw * (2420000.0 / (8388608.0 * 4))
+        val exgGain:        Int         = 4             // 1,2,3,4,6,8,12
     ) {
-        fun calibrateAccel(raw: Int, axis: Int) = (raw - accelOffset[axis]) / accelSens
-        fun calibrateGyro(raw: Int, axis: Int)  = (raw - gyroOffset[axis])  / gyroSens
-        fun calibrateMag(raw: Int, axis: Int)   = (raw - magOffset[axis])   / magSens
+        fun calibrateAccel(raw: Int, axis: Int)   = (raw - accelOffset[axis]) / accelSens
+        fun calibrateAccelWr(raw: Int, axis: Int) = (raw - accelWrOffset[axis]) / accelWrSens
+        fun calibrateGyro(raw: Int, axis: Int)    = (raw - gyroOffset[axis])  / gyroSens
+        fun calibrateMag(raw: Int, axis: Int)     = (raw - magOffset[axis])   / magSens
         // Battery: ADC reads through a ÷2 voltage divider, 3.0V reference
         // Vbatt (mV) = (raw / 4095) × 3000 × 2
         fun calibrateBatt(raw: Int): Double = (raw / 4095.0) * 3000.0 * 2.0
@@ -141,6 +175,40 @@ object ShimmerProtocol {
             return (1.0 / ((r / 4096.0 * 3.0) / 1000.0 + 1.0e-9)) / 1000.0
         }
         fun calibratePpg(raw: Int): Double = raw * (3.0 / 4095.0) * 1000.0
+        // EMG/ExG: convert 24-bit ADC raw to µV
+        // LSB value = Vref_µV / (2^23 * gain) where Vref = 2,420,000 µV
+        fun calibrateEmg(raw: Int): Double = raw * (2420000.0 / (8388608.0 * exgGain))
+        fun calibrateExg(raw: Int): Double = calibrateEmg(raw) / 1000.0  // → mV
+        // BMP280 compensated temperature — returns °C × 100 (integer)
+        // Uses standard BMP280 compensation formula from datasheet.
+        private fun bmp280CompTemp(rawT: Int): Pair<Double, Long> {
+            val t1 = bmp280DigsT[0].toLong()
+            val t2 = bmp280DigsT[1].toLong()
+            val t3 = bmp280DigsT[2].toLong()
+            val adcT = rawT.toLong()
+            val var1 = (((adcT shr 3) - (t1 shl 1)) * t2) shr 11
+            val var2 = (((adcT shr 4) - t1) * ((adcT shr 4) - t1) shr 12) * t3 shr 14
+            val tFine = var1 + var2
+            val tempC = ((tFine * 5 + 128) shr 8) / 100.0
+            return Pair(tempC, tFine)
+        }
+        // BMP280 compensated pressure in Pa
+        fun calibrateBmp280(rawT: Int, rawP: Int): Pair<Double, Double> {
+            val (tempC, tFine) = bmp280CompTemp(rawT)
+            var v1 = tFine - 128000L
+            var v2 = v1 * v1 * bmp280DigsP[5].toLong()
+            v2 += (v1 * bmp280DigsP[4].toLong()) shl 17
+            v2 += bmp280DigsP[3].toLong() shl 35
+            v1 = ((v1 * v1 * bmp280DigsP[2]) shr 8) + ((v1 * bmp280DigsP[1]) shl 12)
+            v1 = (((1L shl 47) + v1) * bmp280DigsP[0]) shr 33
+            if (v1 == 0L) return Pair(tempC, 0.0)
+            var p = 1048576L - rawP
+            p = ((p shl 31) - v2) * 3125 / v1
+            v1 = (bmp280DigsP[8].toLong() * (p shr 13) * (p shr 13)) shr 25
+            v2 = (bmp280DigsP[7].toLong() * p) shr 19
+            val pressurePa = ((p + v1 + v2) shr 8) / 256.0
+            return Pair(tempC, pressurePa)
+        }
     }
 
     // ─── Packet parser ────────────────────────────────────────────────────────
@@ -223,9 +291,12 @@ object ShimmerProtocol {
                 0x0A -> result["batt_mv"]  = calParams.calibrateBatt(readAdc12())  // empirical
                 // ── Standard channel codes ────────────────────────────────────
                 CH_TIMESTAMP     -> {}  // unreachable — handled above
-                CH_ACCEL_LN_X   -> result["accel_x"]   = calParams.calibrateAccel(readI16(), 0)
-                CH_ACCEL_LN_Y   -> result["accel_y"]   = calParams.calibrateAccel(readI16(), 1)
-                CH_ACCEL_LN_Z   -> result["accel_z"]   = calParams.calibrateAccel(readI16(), 2)
+                CH_ACCEL_LN_X   -> { val v = calParams.calibrateAccel(readI16(), 0);
+                                     result["accel_ln_x"] = v; result["accel_x"] = v }
+                CH_ACCEL_LN_Y   -> { val v = calParams.calibrateAccel(readI16(), 1);
+                                     result["accel_ln_y"] = v; result["accel_y"] = v }
+                CH_ACCEL_LN_Z   -> { val v = calParams.calibrateAccel(readI16(), 2);
+                                     result["accel_ln_z"] = v; result["accel_z"] = v }
                 CH_VBATT        -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())
                 CH_GSR          -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())
                 CH_EXT_ADC_CH7  -> { readU16() }
@@ -235,15 +306,23 @@ object ShimmerProtocol {
                 CH_INT_ADC_CH12 -> { readU16() }
                 CH_INT_ADC_CH13 -> result["ppg_mv"]    = calParams.calibratePpg(readAdc12())
                 CH_INT_ADC_CH14 -> result["ppg_mv"]    = calParams.calibratePpg(readAdc12())
-                CH_ACCEL_WR_X   -> result["accel_wr_x"] = calParams.calibrateAccel(readI16(), 0)
-                CH_ACCEL_WR_Y   -> result["accel_wr_y"] = calParams.calibrateAccel(readI16(), 1)
-                CH_ACCEL_WR_Z   -> result["accel_wr_z"] = calParams.calibrateAccel(readI16(), 2)
+                CH_ACCEL_WR_X   -> result["accel_wr_x"]  = calParams.calibrateAccelWr(readI16(), 0)
+                CH_ACCEL_WR_Y   -> result["accel_wr_y"]  = calParams.calibrateAccelWr(readI16(), 1)
+                CH_ACCEL_WR_Z   -> result["accel_wr_z"]  = calParams.calibrateAccelWr(readI16(), 2)
                 CH_EXG1_STATUS  -> { readU8() }
-                CH_EXG1_CH1_24  -> result["exg1_ch1"]  = readI24BE().toDouble()
-                CH_EXG1_CH2_24  -> result["exg1_ch2"]  = readI24BE().toDouble()
+                CH_EXG1_CH1_24  -> {
+                    val raw = readI24BE()
+                    result["exg1_ch1"] = calParams.calibrateExg(raw)
+                    result["emg_ch1"]  = calParams.calibrateEmg(raw)  // µV alias for EMG mode
+                }
+                CH_EXG1_CH2_24  -> {
+                    val raw = readI24BE()
+                    result["exg1_ch2"] = calParams.calibrateExg(raw)
+                    result["emg_ref"]  = calParams.calibrateEmg(raw)  // µV alias for EMG mode
+                }
                 CH_EXG2_STATUS  -> { readU8() }
-                CH_EXG2_CH1_24  -> result["exg2_ch1"]  = readI24BE().toDouble()
-                CH_EXG2_CH2_24  -> result["exg2_ch2"]  = readI24BE().toDouble()
+                CH_EXG2_CH1_24  -> result["exg2_ch1"]  = calParams.calibrateExg(readI24BE())
+                CH_EXG2_CH2_24  -> result["exg2_ch2"]  = calParams.calibrateExg(readI24BE())
                 CH_GYRO_X       -> result["gyro_x"]    = calParams.calibrateGyro(readI16BE(), 0)
                 CH_GYRO_Y       -> result["gyro_y"]    = calParams.calibrateGyro(readI16BE(), 1)
                 CH_GYRO_Z       -> result["gyro_z"]    = calParams.calibrateGyro(readI16BE(), 2)
@@ -251,13 +330,42 @@ object ShimmerProtocol {
                 CH_MAG_X        -> result["mag_x"]     = calParams.calibrateMag(readI16BE(), 0)
                 CH_MAG_Y        -> result["mag_z"]     = calParams.calibrateMag(readI16BE(), 2)
                 CH_MAG_Z        -> result["mag_y"]     = calParams.calibrateMag(readI16BE(), 1)
-                CH_ACCEL_WR2_X  -> { readI16() }
-                CH_ACCEL_WR2_Y  -> { readI16() }
-                CH_ACCEL_WR2_Z  -> { readI16() }
-                CH_EXG1_CH1_16  -> result["exg1_ch1"]  = readI16BE().toDouble()
-                CH_EXG1_CH2_16  -> result["exg1_ch2"]  = readI16BE().toDouble()
-                CH_EXG2_CH1_16  -> result["exg2_ch1"]  = readI16BE().toDouble()
-                CH_EXG2_CH2_16  -> result["exg2_ch2"]  = readI16BE().toDouble()
+                CH_ACCEL_WR2_X  -> result["accel_wr_x"] = calParams.calibrateAccelWr(readI16(), 0)
+                CH_ACCEL_WR2_Y  -> result["accel_wr_y"] = calParams.calibrateAccelWr(readI16(), 1)
+                CH_ACCEL_WR2_Z  -> result["accel_wr_z"] = calParams.calibrateAccelWr(readI16(), 2)
+                CH_EXG1_CH1_16  -> result["exg1_ch1"]   = calParams.calibrateExg(readI16BE())
+                CH_EXG1_CH2_16  -> result["exg1_ch2"]   = calParams.calibrateExg(readI16BE())
+                CH_EXG2_CH1_16  -> result["exg2_ch1"]   = calParams.calibrateExg(readI16BE())
+                CH_EXG2_CH2_16  -> result["exg2_ch2"]   = calParams.calibrateExg(readI16BE())
+                // MPU9250 magnetometer (IMU unit, LE 16-bit)
+                CH_MPU9250_MAG_X -> result["mag_x"]      = calParams.calibrateMag(readI16(), 0)
+                CH_MPU9250_MAG_Y -> result["mag_y"]      = calParams.calibrateMag(readI16(), 1)
+                CH_MPU9250_MAG_Z -> result["mag_z"]      = calParams.calibrateMag(readI16(), 2)
+                // LSM303AHTR wide-range accel (newer Shimmer3 hardware)
+                CH_ACCEL_AHTR_X  -> result["accel_wr_x"] = calParams.calibrateAccelWr(readI16(), 0)
+                CH_ACCEL_AHTR_Y  -> result["accel_wr_y"] = calParams.calibrateAccelWr(readI16(), 1)
+                CH_ACCEL_AHTR_Z  -> result["accel_wr_z"] = calParams.calibrateAccelWr(readI16(), 2)
+                // BMP280 pressure + temperature (IMU unit)
+                // The firmware sends pressure first, then temperature as two 4-byte LE values.
+                // Both values are stored in a temporary slot; the pair is calibrated together.
+                CH_BMP280_PRESS -> {
+                    // Read 4B pressure; peek at next 4B temperature in same block
+                    if (remaining() >= 8) {
+                        val rawP = ((raw[offset].toInt() and 0xFF) or
+                                   ((raw[offset+1].toInt() and 0xFF) shl 8) or
+                                   ((raw[offset+2].toInt() and 0xFF) shl 16) or
+                                   ((raw[offset+3].toInt() and 0xFF) shl 24))
+                        val rawT = ((raw[offset+4].toInt() and 0xFF) or
+                                   ((raw[offset+5].toInt() and 0xFF) shl 8) or
+                                   ((raw[offset+6].toInt() and 0xFF) shl 16) or
+                                   ((raw[offset+7].toInt() and 0xFF) shl 24))
+                        offset += 4  // consume only pressure here; temp channel will consume next 4
+                        val (t, p) = calParams.calibrateBmp280(rawT, rawP)
+                        result["pressure_pa"] = p
+                        result["temp_c"]      = t
+                    } else offset += minOf(4, remaining())
+                }
+                CH_BMP280_TEMP -> { offset += minOf(4, remaining()) }  // already consumed above
                 else -> {
                     if (!unknownLogged) {
                         AppLog.i("PKT", "Unknown ch=0x%02X w=2 offset=$offset/${raw.size}".format(ch))

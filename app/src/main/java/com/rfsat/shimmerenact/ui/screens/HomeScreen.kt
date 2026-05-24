@@ -112,12 +112,32 @@ fun HomeScreen(
         )
         Spacer(Modifier.height(10.dp))
         SensorTypeCard(
+            title = "IMU Unit",
+            subtitle = "SR31",
+            description = "9-DoF inertial (accel LN+WR, gyro, mag) + BMP280 pressure/temp",
+            icon = Icons.Default.Explore,
+            isSelected = activeSensorType == SensorType.IMU,
+            accentColor = Color(0xFF39A8E0),
+            onClick = { viewModel.selectSensorType(SensorType.IMU) }
+        )
+        Spacer(Modifier.height(10.dp))
+        SensorTypeCard(
+            title = "EMG Unit",
+            subtitle = "SR47-6-0 (EMG mode)",
+            description = "Electromyography — ADS1292R Chip 1 active, IMU",
+            icon = Icons.Default.ElectricBolt,
+            isSelected = activeSensorType == SensorType.EMG,
+            accentColor = Color(0xFFE07B39),
+            onClick = { viewModel.selectSensorType(SensorType.EMG) }
+        )
+        Spacer(Modifier.height(10.dp))
+        SensorTypeCard(
             title = "Custom Sensor",
             subtitle = "User-defined",
             description = "Generic Shimmer3 with custom configuration",
             icon = Icons.Default.Tune,
             isSelected = activeSensorType == SensorType.CUSTOM,
-            accentColor = Color(0xFF39A8E0),
+            accentColor = Color(0xFF888888),
             onClick = { viewModel.selectSensorType(SensorType.CUSTOM) }
         )
 

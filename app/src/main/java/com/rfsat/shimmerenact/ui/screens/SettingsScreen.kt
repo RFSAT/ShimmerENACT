@@ -27,21 +27,27 @@ fun SettingsScreen(
 ) {
     val activeConfig by viewModel.activeConfig.collectAsState()
 
-    var gsrId by remember { mutableStateOf("") }
-    var exgId by remember { mutableStateOf("") }
+    var gsrId    by remember { mutableStateOf("") }
+    var exgId    by remember { mutableStateOf("") }
+    var imuId    by remember { mutableStateOf("") }
+    var emgId    by remember { mutableStateOf("") }
     var customId by remember { mutableStateOf("") }
     var customName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         gsrId = SensorType.GSR_PLUS.defaultBtSuffix
         exgId = SensorType.EXG.defaultBtSuffix
+        imuId = SensorType.IMU.defaultBtSuffix
+        emgId = SensorType.EMG.defaultBtSuffix
     }
 
     LaunchedEffect(activeConfig) {
         when (activeConfig.sensorType) {
             SensorType.GSR_PLUS -> gsrId = activeConfig.btRadioId
-            SensorType.EXG -> exgId = activeConfig.btRadioId
-            SensorType.CUSTOM -> { customId = activeConfig.btRadioId; customName = activeConfig.customName }
+            SensorType.EXG      -> exgId = activeConfig.btRadioId
+            SensorType.IMU      -> imuId = activeConfig.btRadioId
+            SensorType.EMG      -> emgId = activeConfig.btRadioId
+            SensorType.CUSTOM   -> { customId = activeConfig.btRadioId; customName = activeConfig.customName }
         }
     }
 
@@ -88,6 +94,28 @@ fun SettingsScreen(
                     onChange = { exgId = it.uppercase().take(8) },
                     hint = "Default: A077",
                     onSave = { viewModel.updateBtRadioId(SensorType.EXG, exgId) }
+                )
+            }
+
+            // IMU settings
+            SettingsGroup(title = "IMU Unit (SR31)", accentColor = androidx.compose.ui.graphics.Color(0xFF39A8E0)) {
+                SettingsTextField(
+                    label = "BT Radio ID",
+                    value = imuId,
+                    onChange = { imuId = it.uppercase().take(8) },
+                    hint = "Default: A080",
+                    onSave = { viewModel.updateBtRadioId(SensorType.IMU, imuId) }
+                )
+            }
+
+            // EMG settings
+            SettingsGroup(title = "EMG Unit (SR47-6-0 EMG mode)", accentColor = androidx.compose.ui.graphics.Color(0xFFE07B39)) {
+                SettingsTextField(
+                    label = "BT Radio ID",
+                    value = emgId,
+                    onChange = { emgId = it.uppercase().take(8) },
+                    hint = "Default: A077 (same hardware as EXG)",
+                    onSave = { viewModel.updateBtRadioId(SensorType.EMG, emgId) }
                 )
             }
 

@@ -2,6 +2,89 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.0.0
+
+### Added — IMU Unit support (SR31)
+
+The Shimmer3 IMU Unit (SR31) is the base Shimmer3 device without any expansion
+board. It provides all onboard inertial sensors simultaneously:
+
+| Signal | Key | Unit | Sensor |
+|--------|-----|------|--------|
+| Accel LN X/Y/Z | `accel_ln_x` / `y` / `z` | m/s² | Low-noise accel (ADXL345/KXTC9) |
+| Accel WR X/Y/Z | `accel_wr_x` / `y` / `z` | m/s² | Wide-range accel (LSM303AHTR ±8g) |
+| Gyro X/Y/Z | `gyro_x` / `y` / `z` | °/s | MPU9250 gyroscope |
+| Mag X/Y/Z | `mag_x` / `y` / `z` | µT | LSM303 / MPU9250 compass |
+| Pressure | `pressure_pa` | Pa | BMP280 barometric pressure |
+| Temperature | `temp_c` | °C | BMP280 temperature |
+| Battery | `batt_mv` | mV | ADC |
+
+- Default BT radio ID: `A080` (configurable in Settings)
+- BMP280 compensation: full datasheet double-precision formula implemented in
+  `CalibrationParams.calibrateBmp280()`. The BMP280 sends pressure and temperature
+  as a pair of 32-bit LE compensated integers; both are decoded together in the
+  channel parser.
+- Wide-range accel uses `calibrateAccelWr()` with LSM303AHTR default sensitivity
+  (1671 LSB/g for ±8g range).
+
+### Added — EMG Unit support (SR47-6-0 EMG mode)
+
+The Shimmer3 EMG Unit uses the **same ADS1292R dual-chip ExG hardware as the EXG
+Unit (SR47-6-0)** but in EMG configuration: only Chip 1 is active, measuring a
+differential EMG signal from two surface electrodes. Chip 2 is disabled. Source:
+Shimmer3 EMG User Guide Rev1.12, §2 and ShimmerResearch/shimmer3-firmware.
+
+| Signal | Key | Unit | Notes |
+|--------|-----|------|-------|
+| EMG Ch1 | `emg_ch1` | µV | ADS1292R Chip 1, Ch1 — differential EMG |
+| EMG Reference | `emg_ref` | µV | ADS1292R Chip 1, Ch2 — reference electrode |
+| Accel X/Y/Z | `accel_x` / `y` / `z` | m/s² | Onboard LN accel |
+| Gyro X/Y/Z | `gyro_x` / `y` / `z` | °/s | MPU9250 |
+| Battery | `batt_mv` | mV | ADC |
+
+- Default BT radio ID: `A077` (same hardware as EXG; change in Settings if needed)
+- Calibration: ADS1292R 24-bit raw to µV using
+  `raw × (2,420,000 / (8,388,608 × gain))` where gain defaults to 4.
+  The same formula is used for EXG (result in mV via `calibrateExg()`).
+- The packet format is identical to EXG: `exg1_ch1`/`exg1_ch2` keys are also
+  emitted alongside `emg_ch1`/`emg_ref` so the file viewer works for both modes.
+
+### Changed
+
+- **`SensorType` enum**: two new members `IMU` and `EMG` added between `EXG` and
+  `CUSTOM`. Existing enum ordinals are not used for serialisation (the name string
+  is stored), so this is backward-compatible.
+- **`ShimmerProtocol`** — new channel codes:
+  - `CH_MPU9250_MAG_X/Y/Z` (0x23–0x25) — MPU9250 compass channels
+  - `CH_BMP280_PRESS` (0x2A) / `CH_BMP280_TEMP` (0x2B) — BMP280 pressure/temp
+  - `CH_ACCEL_AHTR_X/Y/Z` (0x2C–0x2E) — LSM303AHTR wide-range accel
+  - Sensor bitmap bits: `SENSOR_b2_ACCEL_MPU`, `SENSOR_b2_MAG_MPU`,
+    `SENSOR_b2_BMP280`
+- **`CalibrationParams`** — new fields and methods:
+  - `accelWrSens` / `accelWrOffset` — wide-range accel calibration
+  - `bmp280DigsT[3]` / `bmp280DigsP[9]` — BMP280 compensation coefficients
+  - `exgGain` — ADS1292R gain (default 4)
+  - `calibrateAccelWr()`, `calibrateEmg()`, `calibrateExg()`, `calibrateBmp280()`
+- **`accel_x/y/z` aliases preserved**: the LN accelerometer parser now emits both
+  `accel_ln_x/y/z` (IMU-specific) and `accel_x/y/z` (legacy GSR+/EXG keys) so
+  that existing recordings and dashboard configurations continue to work unchanged.
+- `HomeScreen`: two new sensor type cards added (IMU, EMG).
+- `SettingsScreen`: two new BT Radio ID fields added (IMU, EMG).
+- `ShimmerViewModel`: `_imuConfig` and `_emgConfig` `MutableStateFlow` instances;
+  `activeConfig` combine chain updated (nested combine for 6 types within the
+  5-flow API limit); all `when(type)` branches updated.
+- `PreferencesRepository`: `KEY_IMU_BT_ID`, `KEY_EMG_BT_ID`,
+  `imuBtId`, `emgBtId` flows, `saveImuBtId()`, `saveEmgBtId()`.
+
+### References
+
+- ShimmerResearch/shimmer3-firmware (LogAndStream protocol sensor bitmap, channel
+  codes): <https://github.com/ShimmerResearch/shimmer3-firmware>
+- Shimmer3 IMU User Guide Rev1.4 — sensor list and calibration for SR31
+- Shimmer3 EMG User Guide Rev1.12 — ADS1292R EMG configuration (Chip 1 only)
+- Shimmer C# API (ShimmerResearch/Shimmer-C-API) — signal lists and unit
+  conventions cross-referenced for consistency
+
 ## v2.2.3
 
 ### Changed

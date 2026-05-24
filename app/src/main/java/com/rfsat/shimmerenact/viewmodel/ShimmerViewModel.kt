@@ -41,6 +41,22 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
             enabledSignals = EXG_SIGNALS.map { it.key }.toSet()
         )
     )
+    private val _imuConfig = MutableStateFlow(
+        SensorConfig(
+            sensorType = SensorType.IMU,
+            btRadioId = SensorType.IMU.defaultBtSuffix,
+            hardwareRateHz = DEFAULT_RATE_HZ,
+            enabledSignals = IMU_SIGNALS.map { it.key }.toSet()
+        )
+    )
+    private val _emgConfig = MutableStateFlow(
+        SensorConfig(
+            sensorType = SensorType.EMG,
+            btRadioId = SensorType.EMG.defaultBtSuffix,
+            hardwareRateHz = DEFAULT_RATE_HZ,
+            enabledSignals = EMG_SIGNALS.map { it.key }.toSet()
+        )
+    )
     private val _customConfig = MutableStateFlow(
         SensorConfig(
             sensorType = SensorType.CUSTOM,
@@ -54,12 +70,19 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     private val _activeSensorType = MutableStateFlow(SensorType.GSR_PLUS)
     val activeSensorType: StateFlow<SensorType> = _activeSensorType.asStateFlow()
 
+    // Combine all 6 configs: combine() supports ≤5 flows, so we nest two combines.
+    private val _baseConfigs = combine(
+        _activeSensorType, _gsrConfig, _exgConfig
+    ) { type, gsr, exg -> Triple(type, gsr, exg) }
+
     val activeConfig: StateFlow<SensorConfig> = combine(
-        _activeSensorType, _gsrConfig, _exgConfig, _customConfig
-    ) { type, gsr, exg, custom ->
+        _baseConfigs, _imuConfig, _emgConfig, _customConfig
+    ) { (type, gsr, exg), imu, emg, custom ->
         when (type) {
             SensorType.GSR_PLUS -> gsr
             SensorType.EXG      -> exg
+            SensorType.IMU      -> imu
+            SensorType.EMG      -> emg
             SensorType.CUSTOM   -> custom
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly,
@@ -111,7 +134,8 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                     0x0A /* empirical batt SR48-5-0 */ -> keys += "batt_mv"
                     // ExG
                     ShimmerProtocol.CH_EXG1_CH1_24,
-                    ShimmerProtocol.CH_EXG1_CH1_16 -> keys += listOf("exg1_ch1", "exg1_ch2")
+                    ShimmerProtocol.CH_EXG1_CH1_16 -> keys += listOf("exg1_ch1", "exg1_ch2",
+                                                                       "emg_ch1",  "emg_ref")  // dual alias for EMG mode
                     ShimmerProtocol.CH_EXG2_CH1_24,
                     ShimmerProtocol.CH_EXG2_CH1_16 -> keys += listOf("exg2_ch1", "exg2_ch2")
                 }
@@ -220,6 +244,8 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             prefsRepo.exgBtId.collect { id -> _exgConfig.update { it.copy(btRadioId = id) } }
+            prefsRepo.imuBtId.collect { id -> _imuConfig.update { it.copy(btRadioId = id) } }
+            prefsRepo.emgBtId.collect { id -> _emgConfig.update { it.copy(btRadioId = id) } }
         }
     }
 
@@ -242,8 +268,10 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     fun updateBtRadioId(type: SensorType, id: String) {
         viewModelScope.launch {
             when (type) {
-                SensorType.GSR_PLUS -> { _gsrConfig.update { it.copy(btRadioId = id) }; prefsRepo.saveGsrBtId(id) }
-                SensorType.EXG      -> { _exgConfig.update { it.copy(btRadioId = id) }; prefsRepo.saveExgBtId(id) }
+                SensorType.GSR_PLUS -> { _gsrConfig.update { it.copy(btRadioId = id) };    prefsRepo.saveGsrBtId(id) }
+                SensorType.EXG      -> { _exgConfig.update { it.copy(btRadioId = id) };    prefsRepo.saveExgBtId(id) }
+                SensorType.IMU      -> { _imuConfig.update { it.copy(btRadioId = id) };    prefsRepo.saveImuBtId(id) }
+                SensorType.EMG      -> { _emgConfig.update { it.copy(btRadioId = id) };    prefsRepo.saveEmgBtId(id) }
                 SensorType.CUSTOM   -> { _customConfig.update { it.copy(btRadioId = id) }; prefsRepo.saveCustomBtId(id) }
             }
         }
@@ -256,6 +284,8 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         when (type) {
             SensorType.GSR_PLUS -> _gsrConfig.update { it.withHardwareRate(clamped) }
             SensorType.EXG      -> _exgConfig.update { it.withHardwareRate(clamped) }
+            SensorType.IMU      -> _imuConfig.update { it.withHardwareRate(clamped) }
+            SensorType.EMG      -> _emgConfig.update { it.withHardwareRate(clamped) }
             SensorType.CUSTOM   -> _customConfig.update { it.withHardwareRate(clamped) }
         }
     }
@@ -269,6 +299,8 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         when (type) {
             SensorType.GSR_PLUS -> _gsrConfig.update { it.withSignalRate(signalKey, hz, constraints) }
             SensorType.EXG      -> _exgConfig.update { it.withSignalRate(signalKey, hz, constraints) }
+            SensorType.IMU      -> _imuConfig.update { it.withSignalRate(signalKey, hz, constraints) }
+            SensorType.EMG      -> _emgConfig.update { it.withSignalRate(signalKey, hz, constraints) }
             SensorType.CUSTOM   -> _customConfig.update { it.withSignalRate(signalKey, hz, constraints) }
         }
     }

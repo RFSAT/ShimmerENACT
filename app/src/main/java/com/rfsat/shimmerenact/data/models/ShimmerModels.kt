@@ -7,9 +7,16 @@ enum class SensorType(
     val defaultBtSuffix: String,
     val modelId: String
 ) {
-    GSR_PLUS("GSR+ Unit", "A096", "SR48-5-0"),
-    EXG("EXG Unit", "A077", "SR47-6-0"),
-    CUSTOM("Custom Sensor", "", "Custom")
+    GSR_PLUS("GSR+ Unit",     "A096", "SR48-5-0"),
+    EXG("EXG Unit",           "A077", "SR47-6-0"),
+    // IMU: base Shimmer3 unit (SR31) — onboard sensors only, no expansion board.
+    // 9-DoF inertial (accel LN + WR, gyro, mag) + BMP280 pressure/temperature.
+    IMU("IMU Unit",           "A080", "SR31"),
+    // EMG: same SR47 ExG hardware as EXG, but configured for EMG mode.
+    // Only Chip 1 of the ADS1292R is active; Chip 2 is disabled.
+    // Default BT suffix matches EXG hardware — change in Settings if needed.
+    EMG("EMG Unit",           "A077", "SR47-6-0-EMG"),
+    CUSTOM("Custom Sensor",   "", "Custom")
 }
 
 // ─── Hardware rate constraints per signal group ───────────────────────────────
@@ -45,6 +52,8 @@ val RATE_EXG      = RateConstraints(125, 4000, listOf(125, 250, 500, 1000, 2000,
 val RATE_GSR_PPG  = RateConstraints(1, 6000)
 val RATE_SLOW     = RateConstraints(1, 10)
 val RATE_GENERIC  = RateConstraints(1, 6000)
+// BMP280 pressure: max ODR ≈ 157 Hz; practical use ≤ 40 Hz
+val RATE_PRESSURE = RateConstraints(1, 40)
 
 const val DEFAULT_RATE_HZ = 250
 
@@ -89,6 +98,43 @@ val EXG_SIGNALS = listOf(
     ShimmerSignal("batt_mv",   "Battery",     "mV",  0xFF888888, 0.0, 4500.0,     RATE_SLOW)
 )
 
+// IMU Unit — Shimmer3 base (SR31): onboard 9-DoF IMU + BMP280
+// Low-Noise Accel (ADXL345/KXTC9) + Wide-Range Accel (LSM303AHTR)
+// + Gyro (MPU9250) + Mag (LSM303/MPU9250) + BMP280 pressure
+val IMU_SIGNALS = listOf(
+    ShimmerSignal("accel_ln_x", "Accel LN X",   "m/s²", 0xFFE07B39, -20.0,   20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_ln_y", "Accel LN Y",   "m/s²", 0xFFE0B539, -20.0,   20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_ln_z", "Accel LN Z",   "m/s²", 0xFF39A8E0, -20.0,   20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_wr_x", "Accel WR X",   "m/s²", 0xFFB039E0, -156.9,  156.9,    RATE_ACCEL),
+    ShimmerSignal("accel_wr_y", "Accel WR Y",   "m/s²", 0xFFE039B0, -156.9,  156.9,    RATE_ACCEL),
+    ShimmerSignal("accel_wr_z", "Accel WR Z",   "m/s²", 0xFF39E0B0, -156.9,  156.9,    RATE_ACCEL),
+    ShimmerSignal("gyro_x",     "Gyro X",       "°/s",  0xFF43AF81, -500.0,  500.0,    RATE_GYRO),
+    ShimmerSignal("gyro_y",     "Gyro Y",       "°/s",  0xFF86BA39, -500.0,  500.0,    RATE_GYRO),
+    ShimmerSignal("gyro_z",     "Gyro Z",       "°/s",  0xFFAF4381, -500.0,  500.0,    RATE_GYRO),
+    ShimmerSignal("mag_x",      "Mag X",        "µT",   0xFFE04040, -1000.0, 1000.0,   RATE_MAG),
+    ShimmerSignal("mag_y",      "Mag Y",        "µT",   0xFF40E040, -1000.0, 1000.0,   RATE_MAG),
+    ShimmerSignal("mag_z",      "Mag Z",        "µT",   0xFF4040E0, -1000.0, 1000.0,   RATE_MAG),
+    ShimmerSignal("pressure_pa","Pressure",     "Pa",   0xFFAAAAAA, 30000.0, 110000.0, RATE_PRESSURE),
+    ShimmerSignal("temp_c",     "Temperature",  "°C",   0xFF888888, -40.0,   85.0,     RATE_PRESSURE),
+    ShimmerSignal("batt_mv",    "Battery",      "mV",   0xFF555555, 0.0,     4500.0,   RATE_SLOW)
+)
+
+// EMG Unit — SR47-6-0 ExG hardware in EMG configuration
+// Only Chip 1 (ADS1292R #1) is active: Ch1 = EMG differential signal,
+// Ch2 = reference/ground electrode. Chip 2 is disabled.
+// IMU sensors (accel, gyro) are also present on the base board.
+val EMG_SIGNALS = listOf(
+    ShimmerSignal("emg_ch1",  "EMG Ch1",       "µV",   0xFF43AF81, -5000.0, 5000.0,   RATE_EXG),
+    ShimmerSignal("emg_ref",  "EMG Reference", "µV",   0xFF86BA39, -5000.0, 5000.0,   RATE_EXG),
+    ShimmerSignal("accel_x",  "Accel X",       "m/s²", 0xFFE07B39, -20.0,   20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_y",  "Accel Y",       "m/s²", 0xFFE0B539, -20.0,   20.0,     RATE_ACCEL),
+    ShimmerSignal("accel_z",  "Accel Z",       "m/s²", 0xFF39A8E0, -20.0,   20.0,     RATE_ACCEL),
+    ShimmerSignal("gyro_x",   "Gyro X",        "°/s",  0xFFB039E0, -500.0,  500.0,    RATE_GYRO),
+    ShimmerSignal("gyro_y",   "Gyro Y",        "°/s",  0xFFE039B0, -500.0,  500.0,    RATE_GYRO),
+    ShimmerSignal("gyro_z",   "Gyro Z",        "°/s",  0xFF39E0B0, -500.0,  500.0,    RATE_GYRO),
+    ShimmerSignal("batt_mv",  "Battery",       "mV",   0xFF888888, 0.0,     4500.0,   RATE_SLOW)
+)
+
 val CUSTOM_SIGNALS = listOf(
     ShimmerSignal("ch1", "Channel 1", "raw", 0xFF43AF81, rateConstraints = RATE_GENERIC),
     ShimmerSignal("ch2", "Channel 2", "raw", 0xFF86BA39, rateConstraints = RATE_GENERIC),
@@ -99,6 +145,8 @@ val CUSTOM_SIGNALS = listOf(
 fun signalsForType(type: SensorType): List<ShimmerSignal> = when (type) {
     SensorType.GSR_PLUS -> GSR_SIGNALS
     SensorType.EXG      -> EXG_SIGNALS
+    SensorType.IMU      -> IMU_SIGNALS
+    SensorType.EMG      -> EMG_SIGNALS
     SensorType.CUSTOM   -> CUSTOM_SIGNALS
 }
 

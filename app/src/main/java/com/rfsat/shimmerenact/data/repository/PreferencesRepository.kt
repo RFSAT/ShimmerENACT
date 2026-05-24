@@ -19,6 +19,8 @@ class PreferencesRepository(private val context: Context) {
         val KEY_EXG_BT_ID       = stringPreferencesKey("exg_bt_id")
         val KEY_CUSTOM_BT_ID    = stringPreferencesKey("custom_bt_id")
         val KEY_CUSTOM_NAME     = stringPreferencesKey("custom_name")
+        val KEY_IMU_BT_ID       = stringPreferencesKey("imu_bt_id")
+        val KEY_EMG_BT_ID       = stringPreferencesKey("emg_bt_id")
         val KEY_SAMPLING_RATE   = intPreferencesKey("sampling_rate")
         val KEY_LAST_SENSOR     = stringPreferencesKey("last_sensor_type")
         val KEY_LAST_ADDRESS    = stringPreferencesKey("last_bt_address")
@@ -32,6 +34,14 @@ class PreferencesRepository(private val context: Context) {
     val exgBtId: Flow<String> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[KEY_EXG_BT_ID] ?: SensorType.EXG.defaultBtSuffix }
+
+    val imuBtId: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_IMU_BT_ID] ?: SensorType.IMU.defaultBtSuffix }
+
+    val emgBtId: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_EMG_BT_ID] ?: SensorType.EMG.defaultBtSuffix }
 
     val customBtId: Flow<String> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -48,6 +58,8 @@ class PreferencesRepository(private val context: Context) {
     suspend fun saveGsrBtId(id: String) = context.dataStore.edit { it[KEY_GSR_BT_ID] = id }
     suspend fun saveExgBtId(id: String) = context.dataStore.edit { it[KEY_EXG_BT_ID] = id }
     suspend fun saveCustomBtId(id: String) = context.dataStore.edit { it[KEY_CUSTOM_BT_ID] = id }
+    suspend fun saveImuBtId(id: String)    = context.dataStore.edit { it[KEY_IMU_BT_ID] = id }
+    suspend fun saveEmgBtId(id: String)    = context.dataStore.edit { it[KEY_EMG_BT_ID] = id }
     suspend fun saveCustomName(name: String) = context.dataStore.edit { it[KEY_CUSTOM_NAME] = name }
     suspend fun saveSamplingRate(rate: Int) = context.dataStore.edit { it[KEY_SAMPLING_RATE] = rate }
     suspend fun saveLastAddress(addr: String) = context.dataStore.edit { it[KEY_LAST_ADDRESS] = addr }
