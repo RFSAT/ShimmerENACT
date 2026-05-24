@@ -2,6 +2,106 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.0
+
+### Added — Ebio Unit (SR59)
+
+Bioimpedance + ECG unit. Both ADS1292R chips are active simultaneously: Chip 1
+measures ECG (lead-I equivalent on Ch1, driven right leg on Ch2); Chip 2 receives
+the bioimpedance signal for respiratory monitoring (voltage Ch1, reference Ch2).
+
+| Signal | Key | Unit |
+|--------|-----|------|
+| ECG Ch1 | `ecg_ch1` | mV |
+| ECG Ch2 (RLD) | `ecg_ch2` | mV |
+| BioZ Ch1 | `bioz_ch1` | mV |
+| BioZ Ch2 (Ref) | `bioz_ch2` | mV |
+| Accel / Gyro / Battery | (standard keys) | |
+
+SR number: SR59. Default BT suffix: `A078`.
+Protocol: identical packet format to EXG (both ADS chips 24-bit). New signal key
+aliases `ecg_ch1/ch2` and `bioz_ch1/ch2` are emitted alongside `exg1_ch1/ch2`
+and `exg2_ch1/ch2` from the same raw bytes.
+
+### Added — Bridge Amplifier+ (SR37)
+
+Strain gauge / load cell interface. Two bridge amplifier ADC output channels
+(high-gain for unipolar load cells, low-gain for bipolar/strain-gauge inputs)
+plus a resistance divider input for skin-surface temperature via thermistor.
+
+| Signal | Key | Unit | Channel |
+|--------|-----|------|---------|
+| Bridge High Gain | `bridge_high` | raw ADC | `CH_INT_ADC_CH12` |
+| Bridge Low Gain | `bridge_low` | raw ADC | `CH_INT_ADC_CH13` |
+| Skin Temp Resistance | `skin_temp_kohm` | kΩ | `CH_INT_ADC_CH1` |
+| Accel LN / Gyro / Battery | (standard keys) | | |
+
+SR number: SR37. Default BT suffix: `A079`.
+Calibration: `bridge_high`/`bridge_low` are raw 12-bit ADC counts; users apply
+their own load-cell calibration. Skin temp uses a 10 kΩ reference divider:
+R_skin = 10 × raw / (4095 − raw) kΩ.
+Protocol: bridge amp signals map to the `SENSOR_b1_BRIDGE_AMP` bitmap bit.
+The same ADC channels are used by GSR+ PPG (`CH_INT_ADC_CH13`) — keys are all
+emitted and the sensor type selects which ones to display.
+
+### Added — 200g IMU (SR31-200G)
+
+Standard SR31 IMU base with an additional ADXL377 ±200g high-g accelerometer
+connected to three external ADC channels. Ideal for concussion detection, blast
+events, and high-impact sports science.
+
+| Signal | Key | Unit | Channel |
+|--------|-----|------|---------|
+| Accel HG X/Y/Z | `accel_hg_x/y/z` | m/s² | `CH_EXT_ADC_CH6/7/15` |
+| Accel LN/WR / Gyro / Mag / Pressure / Temp / Battery | (standard IMU keys) | | |
+
+SR number: SR31-200G. Default BT suffix: `A081`.
+Calibration: ADXL377 is ratiometric (0g = mid-scale = 2048 ADC counts);
+`accel_hg = (raw − 2048) × 200 × 9.81 / 2048` m/s². Range: ±1962 m/s².
+The same external ADC channels are also aliased as PROTO3 Deluxe analog channels.
+
+### Added — PROTO3 Deluxe (SR50)
+
+Four-channel analog input expansion board via 3.5mm TRRS jacks plus full IMU.
+Intended for custom analog sensor interfacing; users apply sensor-specific
+calibration post-collection. ADC values are passed through as raw counts (0–4095).
+
+| Signal | Key | Unit | Channel |
+|--------|-----|------|---------|
+| Analog Ch1 | `analog_ch1` | raw | `CH_EXT_ADC_CH6` |
+| Analog Ch2 | `analog_ch2` | raw | `CH_EXT_ADC_CH7` |
+| Analog Ch3 | `analog_ch3` | raw | `CH_EXT_ADC_CH15` |
+| Analog Ch4 | `analog_ch4` | raw | `CH_INT_ADC_CH1` |
+| Accel LN / Gyro / Battery | (standard keys) | | |
+
+SR number: SR50. Default BT suffix: `A082`.
+
+### Changed
+
+- `SensorType` enum: four new members `EBIO`, `BRIDGE_AMP`, `IMU_200G`,
+  `PROTO3_DELUXE` added before `CUSTOM`.
+- `CalibrationParams`: new fields `highGSensitivity`; new methods
+  `calibrateHighG()`, `calibrateSkinTemp()`, `calibrateAnalog()`.
+- ADC channel parser: `CH_EXT_ADC_CH6/7/15` and `CH_INT_ADC_CH1/12/13` now
+  emit multiple signal keys simultaneously so each sensor type reads its own
+  relevant value from the same raw channel data.
+- `activeConfig` combine chain: upgraded from 2-level nesting (6 types) to
+  3-level nesting (`_baseConfigs` → `_midConfigs` → `_extConfigs`) to accommodate
+  9 total sensor types within the 5-flow `combine()` API limit.
+- `HomeScreen`: 4 new sensor type cards added.
+- `SettingsScreen`: 4 new BT Radio ID settings groups added.
+- `ShimmerViewModel`: 4 new `MutableStateFlow<SensorConfig>` instances; all
+  `when(type)` branches updated.
+- `PreferencesRepository`: 4 new DataStore keys, flows, and save functions.
+
+### References
+
+- ShimmerResearch/shimmer3-firmware LogAndStream changelog: SR37/SR47/SR59 ExG
+  board family confirmed; `SENSOR_b1_BRIDGE_AMP` bitmap bit (Byte1, bit7)
+- Shimmer3 Bridge Amplifier+ User Guide Rev1.6 — two-channel output description
+- Shimmer3 200g IMU Spec Sheet v0.1 — ADXL377 ±200g ratiometric analog output
+- PROTO3 Deluxe product page — 4 analog input channels via 3.5mm TRRS, SR50
+
 ## v3.0.0
 
 ### Added — IMU Unit support (SR31)

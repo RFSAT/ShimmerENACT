@@ -16,6 +16,20 @@ enum class SensorType(
     // Only Chip 1 of the ADS1292R is active; Chip 2 is disabled.
     // Default BT suffix matches EXG hardware — change in Settings if needed.
     EMG("EMG Unit",           "A077", "SR47-6-0-EMG"),
+    // Ebio: SR59 expansion board — bioimpedance (respiratory) + ECG using both
+    // ADS1292R chips simultaneously. Chip1 drives/measures ECG; Chip2 receives
+    // the bioimpedance signal. Also has full IMU.
+    EBIO("Ebio Unit",         "A078", "SR59"),
+    // Bridge Amplifier+: SR37 expansion board — strain gauge / load cell interface.
+    // Two bridge amplifier ADC output channels (high-gain + low-gain) plus a
+    // resistance divider channel for skin-surface temperature. Full IMU included.
+    BRIDGE_AMP("Bridge Amplifier+", "A079", "SR37"),
+    // 200g IMU: SR31 base plus a high-g accelerometer (ADXL377 ±200g) connected
+    // to three ADC channels. All standard IMU signals plus the high-g accel.
+    IMU_200G("200g IMU",      "A081", "SR31-200G"),
+    // PROTO3 Deluxe: SR50 expansion board — 4 analog input channels via 3.5mm
+    // TRRS jacks plus full IMU. Used for custom analog sensor interfacing.
+    PROTO3_DELUXE("PROTO3 Deluxe", "A082", "SR50"),
     CUSTOM("Custom Sensor",   "", "Custom")
 }
 
@@ -135,6 +149,82 @@ val EMG_SIGNALS = listOf(
     ShimmerSignal("batt_mv",  "Battery",       "mV",   0xFF888888, 0.0,     4500.0,   RATE_SLOW)
 )
 
+// Ebio Unit — SR59: ECG (Chip1) + Bioimpedance/Respiration (Chip2) + IMU
+// Both ADS1292R chips active. Chip1 Ch1 = ECG lead-I equivalent, Ch2 = driven right leg.
+// Chip2 Ch1 = bioimpedance voltage, Ch2 = reference. Signals in mV (same calibration as EXG).
+val EBIO_SIGNALS = listOf(
+    ShimmerSignal("ecg_ch1",    "ECG Ch1",          "mV",  0xFF43AF81, -3.0,    3.0,     RATE_EXG),
+    ShimmerSignal("ecg_ch2",    "ECG Ch2 (RLD)",    "mV",  0xFF86BA39, -3.0,    3.0,     RATE_EXG),
+    ShimmerSignal("bioz_ch1",   "BioZ Ch1",         "mV",  0xFFE07B39, -3.0,    3.0,     RATE_EXG),
+    ShimmerSignal("bioz_ch2",   "BioZ Ch2 (Ref)",   "mV",  0xFF39A8E0, -3.0,    3.0,     RATE_EXG),
+    ShimmerSignal("accel_x",    "Accel X",          "m/s²",0xFFE0B539, -20.0,   20.0,    RATE_ACCEL),
+    ShimmerSignal("accel_y",    "Accel Y",          "m/s²",0xFFB039E0, -20.0,   20.0,    RATE_ACCEL),
+    ShimmerSignal("accel_z",    "Accel Z",          "m/s²",0xFF39E0B0, -20.0,   20.0,    RATE_ACCEL),
+    ShimmerSignal("gyro_x",     "Gyro X",           "°/s", 0xFFE04040, -500.0,  500.0,   RATE_GYRO),
+    ShimmerSignal("gyro_y",     "Gyro Y",           "°/s", 0xFF40E040, -500.0,  500.0,   RATE_GYRO),
+    ShimmerSignal("gyro_z",     "Gyro Z",           "°/s", 0xFF4040E0, -500.0,  500.0,   RATE_GYRO),
+    ShimmerSignal("batt_mv",    "Battery",          "mV",  0xFF888888, 0.0,     4500.0,  RATE_SLOW)
+)
+
+// Bridge Amplifier+ — SR37: strain gauge / load cell + skin temperature + IMU
+// bridge_high: high-gain amplifier output (3× additional gain vs low, for unipolar load cells)
+// bridge_low:  low-gain amplifier output  (for bipolar inputs / strain gauges)
+// skin_temp_kohm: resistance divider input mapped to kΩ (raw ADC reading)
+// All three read via internal ADC channels; units are raw ADC counts until user applies
+// their own load-cell calibration. Ranges cover the 12-bit ADC full-scale.
+val BRIDGE_AMP_SIGNALS = listOf(
+    ShimmerSignal("bridge_high",   "Bridge High Gain", "raw", 0xFF43AF81, 0.0, 4095.0, RATE_GENERIC),
+    ShimmerSignal("bridge_low",    "Bridge Low Gain",  "raw", 0xFF86BA39, 0.0, 4095.0, RATE_GENERIC),
+    ShimmerSignal("skin_temp_kohm","Skin Temp Res",    "kΩ",  0xFFE07B39, 0.0, 2000.0, RATE_SLOW),
+    ShimmerSignal("accel_ln_x",   "Accel LN X",       "m/s²",0xFF39A8E0, -20.0, 20.0,  RATE_ACCEL),
+    ShimmerSignal("accel_ln_y",   "Accel LN Y",       "m/s²",0xFFE0B539, -20.0, 20.0,  RATE_ACCEL),
+    ShimmerSignal("accel_ln_z",   "Accel LN Z",       "m/s²",0xFFB039E0, -20.0, 20.0,  RATE_ACCEL),
+    ShimmerSignal("gyro_x",       "Gyro X",           "°/s", 0xFF39E0B0, -500.0, 500.0, RATE_GYRO),
+    ShimmerSignal("gyro_y",       "Gyro Y",           "°/s", 0xFFE04040, -500.0, 500.0, RATE_GYRO),
+    ShimmerSignal("gyro_z",       "Gyro Z",           "°/s", 0xFF40E040, -500.0, 500.0, RATE_GYRO),
+    ShimmerSignal("batt_mv",      "Battery",          "mV",  0xFF888888, 0.0, 4500.0,   RATE_SLOW)
+)
+
+// 200g IMU — SR31 base + ADXL377 high-g accel (±200g, analog, 3 ADC channels)
+// The ADXL377 is ratiometric: 0g = Vcc/2, ±200g = 0V/Vcc.
+// Calibration: accel_hg = (raw - 2048) × (200.0 × 9.81 / 2048) m/s² (approximate)
+// Standard 9-DoF IMU sensors also present (same as IMU_SIGNALS).
+val IMU_200G_SIGNALS = listOf(
+    ShimmerSignal("accel_hg_x", "Accel HG X",   "m/s²", 0xFF43AF81, -1962.0, 1962.0, RATE_ACCEL),
+    ShimmerSignal("accel_hg_y", "Accel HG Y",   "m/s²", 0xFF86BA39, -1962.0, 1962.0, RATE_ACCEL),
+    ShimmerSignal("accel_hg_z", "Accel HG Z",   "m/s²", 0xFFE07B39, -1962.0, 1962.0, RATE_ACCEL),
+    ShimmerSignal("accel_ln_x", "Accel LN X",   "m/s²", 0xFF39A8E0, -20.0,   20.0,   RATE_ACCEL),
+    ShimmerSignal("accel_ln_y", "Accel LN Y",   "m/s²", 0xFFE0B539, -20.0,   20.0,   RATE_ACCEL),
+    ShimmerSignal("accel_ln_z", "Accel LN Z",   "m/s²", 0xFFB039E0, -20.0,   20.0,   RATE_ACCEL),
+    ShimmerSignal("accel_wr_x", "Accel WR X",   "m/s²", 0xFF39E0B0, -156.9,  156.9,  RATE_ACCEL),
+    ShimmerSignal("accel_wr_y", "Accel WR Y",   "m/s²", 0xFFE04040, -156.9,  156.9,  RATE_ACCEL),
+    ShimmerSignal("accel_wr_z", "Accel WR Z",   "m/s²", 0xFF40E040, -156.9,  156.9,  RATE_ACCEL),
+    ShimmerSignal("gyro_x",     "Gyro X",       "°/s",  0xFF4040E0, -500.0,  500.0,  RATE_GYRO),
+    ShimmerSignal("gyro_y",     "Gyro Y",       "°/s",  0xFFAF4381, -500.0,  500.0,  RATE_GYRO),
+    ShimmerSignal("gyro_z",     "Gyro Z",       "°/s",  0xFF43AF81, -500.0,  500.0,  RATE_GYRO),
+    ShimmerSignal("mag_x",      "Mag X",        "µT",   0xFF86BA39, -1000.0, 1000.0, RATE_MAG),
+    ShimmerSignal("mag_y",      "Mag Y",        "µT",   0xFFE07B39, -1000.0, 1000.0, RATE_MAG),
+    ShimmerSignal("mag_z",      "Mag Z",        "µT",   0xFF39A8E0, -1000.0, 1000.0, RATE_MAG),
+    ShimmerSignal("batt_mv",    "Battery",      "mV",   0xFF888888, 0.0,     4500.0, RATE_SLOW)
+)
+
+// PROTO3 Deluxe — SR50: 4 analog input channels via 3.5mm TRRS jacks + full IMU
+// Channels connect to internal ADC inputs; units are raw ADC counts (0–4095).
+// User applies their own sensor-specific calibration after data collection.
+val PROTO3_DELUXE_SIGNALS = listOf(
+    ShimmerSignal("analog_ch1", "Analog Ch1",  "raw", 0xFF43AF81, 0.0, 4095.0, RATE_GENERIC),
+    ShimmerSignal("analog_ch2", "Analog Ch2",  "raw", 0xFF86BA39, 0.0, 4095.0, RATE_GENERIC),
+    ShimmerSignal("analog_ch3", "Analog Ch3",  "raw", 0xFFE07B39, 0.0, 4095.0, RATE_GENERIC),
+    ShimmerSignal("analog_ch4", "Analog Ch4",  "raw", 0xFF39A8E0, 0.0, 4095.0, RATE_GENERIC),
+    ShimmerSignal("accel_ln_x", "Accel LN X",  "m/s²",0xFFE0B539, -20.0,  20.0,  RATE_ACCEL),
+    ShimmerSignal("accel_ln_y", "Accel LN Y",  "m/s²",0xFFB039E0, -20.0,  20.0,  RATE_ACCEL),
+    ShimmerSignal("accel_ln_z", "Accel LN Z",  "m/s²",0xFF39E0B0, -20.0,  20.0,  RATE_ACCEL),
+    ShimmerSignal("gyro_x",     "Gyro X",      "°/s", 0xFFE04040, -500.0, 500.0, RATE_GYRO),
+    ShimmerSignal("gyro_y",     "Gyro Y",      "°/s", 0xFF40E040, -500.0, 500.0, RATE_GYRO),
+    ShimmerSignal("gyro_z",     "Gyro Z",      "°/s", 0xFF4040E0, -500.0, 500.0, RATE_GYRO),
+    ShimmerSignal("batt_mv",    "Battery",     "mV",  0xFF888888, 0.0, 4500.0,   RATE_SLOW)
+)
+
 val CUSTOM_SIGNALS = listOf(
     ShimmerSignal("ch1", "Channel 1", "raw", 0xFF43AF81, rateConstraints = RATE_GENERIC),
     ShimmerSignal("ch2", "Channel 2", "raw", 0xFF86BA39, rateConstraints = RATE_GENERIC),
@@ -143,11 +233,15 @@ val CUSTOM_SIGNALS = listOf(
 )
 
 fun signalsForType(type: SensorType): List<ShimmerSignal> = when (type) {
-    SensorType.GSR_PLUS -> GSR_SIGNALS
-    SensorType.EXG      -> EXG_SIGNALS
-    SensorType.IMU      -> IMU_SIGNALS
-    SensorType.EMG      -> EMG_SIGNALS
-    SensorType.CUSTOM   -> CUSTOM_SIGNALS
+    SensorType.GSR_PLUS      -> GSR_SIGNALS
+    SensorType.EXG           -> EXG_SIGNALS
+    SensorType.IMU           -> IMU_SIGNALS
+    SensorType.EMG           -> EMG_SIGNALS
+    SensorType.EBIO          -> EBIO_SIGNALS
+    SensorType.BRIDGE_AMP    -> BRIDGE_AMP_SIGNALS
+    SensorType.IMU_200G      -> IMU_200G_SIGNALS
+    SensorType.PROTO3_DELUXE -> PROTO3_DELUXE_SIGNALS
+    SensorType.CUSTOM        -> CUSTOM_SIGNALS
 }
 
 // ─── A single timestamped sample ─────────────────────────────────────────────

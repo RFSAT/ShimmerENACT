@@ -21,6 +21,10 @@ class PreferencesRepository(private val context: Context) {
         val KEY_CUSTOM_NAME     = stringPreferencesKey("custom_name")
         val KEY_IMU_BT_ID       = stringPreferencesKey("imu_bt_id")
         val KEY_EMG_BT_ID       = stringPreferencesKey("emg_bt_id")
+        val KEY_EBIO_BT_ID      = stringPreferencesKey("ebio_bt_id")
+        val KEY_BRIDGE_BT_ID    = stringPreferencesKey("bridge_bt_id")
+        val KEY_IMU200G_BT_ID   = stringPreferencesKey("imu200g_bt_id")
+        val KEY_PROTO3D_BT_ID   = stringPreferencesKey("proto3d_bt_id")
         val KEY_SAMPLING_RATE   = intPreferencesKey("sampling_rate")
         val KEY_LAST_SENSOR     = stringPreferencesKey("last_sensor_type")
         val KEY_LAST_ADDRESS    = stringPreferencesKey("last_bt_address")
@@ -43,6 +47,22 @@ class PreferencesRepository(private val context: Context) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[KEY_EMG_BT_ID] ?: SensorType.EMG.defaultBtSuffix }
 
+    val ebioBtId: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_EBIO_BT_ID] ?: SensorType.EBIO.defaultBtSuffix }
+
+    val bridgeBtId: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_BRIDGE_BT_ID] ?: SensorType.BRIDGE_AMP.defaultBtSuffix }
+
+    val imu200gBtId: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_IMU200G_BT_ID] ?: SensorType.IMU_200G.defaultBtSuffix }
+
+    val proto3dBtId: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_PROTO3D_BT_ID] ?: SensorType.PROTO3_DELUXE.defaultBtSuffix }
+
     val customBtId: Flow<String> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[KEY_CUSTOM_BT_ID] ?: "" }
@@ -60,6 +80,10 @@ class PreferencesRepository(private val context: Context) {
     suspend fun saveCustomBtId(id: String) = context.dataStore.edit { it[KEY_CUSTOM_BT_ID] = id }
     suspend fun saveImuBtId(id: String)    = context.dataStore.edit { it[KEY_IMU_BT_ID] = id }
     suspend fun saveEmgBtId(id: String)    = context.dataStore.edit { it[KEY_EMG_BT_ID] = id }
+    suspend fun saveEbioBtId(id: String)   = context.dataStore.edit { it[KEY_EBIO_BT_ID] = id }
+    suspend fun saveBridgeBtId(id: String) = context.dataStore.edit { it[KEY_BRIDGE_BT_ID] = id }
+    suspend fun saveImu200gBtId(id: String)= context.dataStore.edit { it[KEY_IMU200G_BT_ID] = id }
+    suspend fun saveProto3dBtId(id: String)= context.dataStore.edit { it[KEY_PROTO3D_BT_ID] = id }
     suspend fun saveCustomName(name: String) = context.dataStore.edit { it[KEY_CUSTOM_NAME] = name }
     suspend fun saveSamplingRate(rate: Int) = context.dataStore.edit { it[KEY_SAMPLING_RATE] = rate }
     suspend fun saveLastAddress(addr: String) = context.dataStore.edit { it[KEY_LAST_ADDRESS] = addr }

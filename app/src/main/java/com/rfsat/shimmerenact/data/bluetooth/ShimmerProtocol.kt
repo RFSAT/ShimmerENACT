@@ -161,7 +161,10 @@ object ShimmerProtocol {
         // ADS1292R ExG / EMG gain (default ±4 range, gain=4, Vref=2.42V)
         // LSB = Vref / (2^23 * gain) = 2.42 / (2^23 * 4) → ~72 nV/LSB
         // Output in µV: raw * (2420000.0 / (8388608.0 * 4))
-        val exgGain:        Int         = 4             // 1,2,3,4,6,8,12
+        val exgGain:        Int         = 4,            // 1,2,3,4,6,8,12
+        // ADXL377 high-g accel sensitivity: ±200g over 0–3.3V ratiometric.
+        // Mid-scale = 2048 (12-bit ADC), sensitivity ≈ 9.81 m/s²/LSB × 200/2048
+        val highGSensitivity: Double    = 200.0 * 9.81 / 2048.0
     ) {
         fun calibrateAccel(raw: Int, axis: Int)   = (raw - accelOffset[axis]) / accelSens
         fun calibrateAccelWr(raw: Int, axis: Int) = (raw - accelWrOffset[axis]) / accelWrSens
@@ -193,6 +196,24 @@ object ShimmerProtocol {
             return Pair(tempC, tFine)
         }
         // BMP280 compensated pressure in Pa
+        // High-g accel (ADXL377 ±200g) — ratiometric, 12-bit ADC
+        // Output in m/s²: (raw - 2048) × sensitivity
+        fun calibrateHighG(raw: Int): Double = (raw - 2048) * highGSensitivity
+
+        // Bridge Amplifier raw ADC → pass-through (user applies load-cell cal)
+        fun calibrateBridgeRaw(raw: Int): Double = raw.toDouble()
+
+        // Skin temperature from resistance divider: convert ADC to kΩ
+        // V_out = V_ref × R_skin / (R_ref + R_skin); R_ref typically 10kΩ
+        // R_skin (kΩ) = R_ref × V_out / (V_ref - V_out) = 10 × raw / (4095 - raw)
+        fun calibrateSkinTemp(raw: Int): Double {
+            val denom = (4095 - raw).coerceAtLeast(1)
+            return 10.0 * raw / denom
+        }
+
+        // PROTO3 Deluxe / generic analog: pass ADC raw through (user calibrates)
+        fun calibrateAnalog(raw: Int): Double = raw.toDouble()
+
         fun calibrateBmp280(rawT: Int, rawP: Int): Pair<Double, Double> {
             val (tempC, tFine) = bmp280CompTemp(rawT)
             var v1 = tFine - 128000L
@@ -299,12 +320,37 @@ object ShimmerProtocol {
                                      result["accel_ln_z"] = v; result["accel_z"] = v }
                 CH_VBATT        -> result["batt_mv"]    = calParams.calibrateBatt(readAdc12())
                 CH_GSR          -> result["gsr_kohm"]   = calParams.calibrateGsr(readU16())
-                CH_EXT_ADC_CH7  -> { readU16() }
-                CH_EXT_ADC_CH6  -> { readU16() }
-                CH_EXT_ADC_CH15 -> { readU16() }
-                CH_INT_ADC_CH1  -> { readU16() }
-                CH_INT_ADC_CH12 -> { readU16() }
-                CH_INT_ADC_CH13 -> result["ppg_mv"]    = calParams.calibratePpg(readAdc12())
+                // Multi-role ADC channels — emit multiple keys so each sensor type
+                // picks up its relevant signal from the same raw data.
+                CH_EXT_ADC_CH7  -> {
+                    val raw = readU16()
+                    result["analog_ch2"]  = calParams.calibrateAnalog(raw)   // PROTO3 Deluxe Ch2
+                    result["accel_hg_y"]  = calParams.calibrateHighG(raw and 0x0FFF)  // 200g IMU Y
+                }
+                CH_EXT_ADC_CH6  -> {
+                    val raw = readU16()
+                    result["analog_ch1"]  = calParams.calibrateAnalog(raw)   // PROTO3 Deluxe Ch1
+                    result["accel_hg_x"]  = calParams.calibrateHighG(raw and 0x0FFF)  // 200g IMU X
+                }
+                CH_EXT_ADC_CH15 -> {
+                    val raw = readU16()
+                    result["analog_ch3"]  = calParams.calibrateAnalog(raw)   // PROTO3 Deluxe Ch3
+                    result["accel_hg_z"]  = calParams.calibrateHighG(raw and 0x0FFF)  // 200g IMU Z
+                }
+                CH_INT_ADC_CH1  -> {
+                    val raw = readAdc12()
+                    result["skin_temp_kohm"] = calParams.calibrateSkinTemp(raw)  // Bridge Amp+ skin temp
+                    result["analog_ch4"]     = calParams.calibrateAnalog(raw)   // PROTO3 Deluxe Ch4
+                }
+                CH_INT_ADC_CH12 -> {
+                    val raw = readAdc12()
+                    result["bridge_high"] = calParams.calibrateBridgeRaw(raw)  // Bridge Amp+ high gain
+                }
+                CH_INT_ADC_CH13 -> {
+                    val raw = readAdc12()
+                    result["ppg_mv"]      = calParams.calibratePpg(raw)         // GSR+ PPG
+                    result["bridge_low"]  = calParams.calibrateBridgeRaw(raw)   // Bridge Amp+ low gain
+                }
                 CH_INT_ADC_CH14 -> result["ppg_mv"]    = calParams.calibratePpg(readAdc12())
                 CH_ACCEL_WR_X   -> result["accel_wr_x"]  = calParams.calibrateAccelWr(readI16(), 0)
                 CH_ACCEL_WR_Y   -> result["accel_wr_y"]  = calParams.calibrateAccelWr(readI16(), 1)
@@ -313,16 +359,26 @@ object ShimmerProtocol {
                 CH_EXG1_CH1_24  -> {
                     val raw = readI24BE()
                     result["exg1_ch1"] = calParams.calibrateExg(raw)
-                    result["emg_ch1"]  = calParams.calibrateEmg(raw)  // µV alias for EMG mode
+                    result["emg_ch1"]  = calParams.calibrateEmg(raw)  // EMG mode µV alias
+                    result["ecg_ch1"]  = calParams.calibrateExg(raw)  // Ebio ECG alias
                 }
                 CH_EXG1_CH2_24  -> {
                     val raw = readI24BE()
                     result["exg1_ch2"] = calParams.calibrateExg(raw)
-                    result["emg_ref"]  = calParams.calibrateEmg(raw)  // µV alias for EMG mode
+                    result["emg_ref"]  = calParams.calibrateEmg(raw)  // EMG mode µV alias
+                    result["ecg_ch2"]  = calParams.calibrateExg(raw)  // Ebio ECG RLD alias
                 }
                 CH_EXG2_STATUS  -> { readU8() }
-                CH_EXG2_CH1_24  -> result["exg2_ch1"]  = calParams.calibrateExg(readI24BE())
-                CH_EXG2_CH2_24  -> result["exg2_ch2"]  = calParams.calibrateExg(readI24BE())
+                CH_EXG2_CH1_24  -> {
+                    val raw = readI24BE()
+                    result["exg2_ch1"]  = calParams.calibrateExg(raw)
+                    result["bioz_ch1"]  = calParams.calibrateExg(raw)  // Ebio bioimpedance alias
+                }
+                CH_EXG2_CH2_24  -> {
+                    val raw = readI24BE()
+                    result["exg2_ch2"]  = calParams.calibrateExg(raw)
+                    result["bioz_ch2"]  = calParams.calibrateExg(raw)  // Ebio bioimpedance ref alias
+                }
                 CH_GYRO_X       -> result["gyro_x"]    = calParams.calibrateGyro(readI16BE(), 0)
                 CH_GYRO_Y       -> result["gyro_y"]    = calParams.calibrateGyro(readI16BE(), 1)
                 CH_GYRO_Z       -> result["gyro_z"]    = calParams.calibrateGyro(readI16BE(), 2)

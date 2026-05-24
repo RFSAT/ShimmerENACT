@@ -132,6 +132,46 @@ fun HomeScreen(
         )
         Spacer(Modifier.height(10.dp))
         SensorTypeCard(
+            title = "Ebio Unit",
+            subtitle = "SR59",
+            description = "Bioimpedance (respiration) + ECG, both ADS1292R chips active, IMU",
+            icon = Icons.Default.Favorite,
+            isSelected = activeSensorType == SensorType.EBIO,
+            accentColor = Color(0xFFE07B39),
+            onClick = { viewModel.selectSensorType(SensorType.EBIO) }
+        )
+        Spacer(Modifier.height(10.dp))
+        SensorTypeCard(
+            title = "Bridge Amplifier+",
+            subtitle = "SR37",
+            description = "Strain gauge / load cell (high+low gain), skin temperature, IMU",
+            icon = Icons.Default.Speed,
+            isSelected = activeSensorType == SensorType.BRIDGE_AMP,
+            accentColor = Color(0xFFAF8143),
+            onClick = { viewModel.selectSensorType(SensorType.BRIDGE_AMP) }
+        )
+        Spacer(Modifier.height(10.dp))
+        SensorTypeCard(
+            title = "200g IMU",
+            subtitle = "SR31-200G",
+            description = "High-g accel ±200g (ADXL377) + standard 9-DoF IMU",
+            icon = Icons.Default.FlashOn,
+            isSelected = activeSensorType == SensorType.IMU_200G,
+            accentColor = Color(0xFFE04040),
+            onClick = { viewModel.selectSensorType(SensorType.IMU_200G) }
+        )
+        Spacer(Modifier.height(10.dp))
+        SensorTypeCard(
+            title = "PROTO3 Deluxe",
+            subtitle = "SR50",
+            description = "4 × analog input channels via 3.5mm TRRS + IMU",
+            icon = Icons.Default.Cable,
+            isSelected = activeSensorType == SensorType.PROTO3_DELUXE,
+            accentColor = Color(0xFF7B43AF),
+            onClick = { viewModel.selectSensorType(SensorType.PROTO3_DELUXE) }
+        )
+        Spacer(Modifier.height(10.dp))
+        SensorTypeCard(
             title = "Custom Sensor",
             subtitle = "User-defined",
             description = "Generic Shimmer3 with custom configuration",

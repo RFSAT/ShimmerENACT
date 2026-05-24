@@ -29,25 +29,37 @@ fun SettingsScreen(
 
     var gsrId    by remember { mutableStateOf("") }
     var exgId    by remember { mutableStateOf("") }
-    var imuId    by remember { mutableStateOf("") }
-    var emgId    by remember { mutableStateOf("") }
-    var customId by remember { mutableStateOf("") }
+    var imuId     by remember { mutableStateOf("") }
+    var emgId     by remember { mutableStateOf("") }
+    var ebioId    by remember { mutableStateOf("") }
+    var bridgeId  by remember { mutableStateOf("") }
+    var imu200gId by remember { mutableStateOf("") }
+    var proto3dId by remember { mutableStateOf("") }
+    var customId  by remember { mutableStateOf("") }
     var customName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         gsrId = SensorType.GSR_PLUS.defaultBtSuffix
         exgId = SensorType.EXG.defaultBtSuffix
-        imuId = SensorType.IMU.defaultBtSuffix
-        emgId = SensorType.EMG.defaultBtSuffix
+        imuId     = SensorType.IMU.defaultBtSuffix
+        emgId     = SensorType.EMG.defaultBtSuffix
+        ebioId    = SensorType.EBIO.defaultBtSuffix
+        bridgeId  = SensorType.BRIDGE_AMP.defaultBtSuffix
+        imu200gId = SensorType.IMU_200G.defaultBtSuffix
+        proto3dId = SensorType.PROTO3_DELUXE.defaultBtSuffix
     }
 
     LaunchedEffect(activeConfig) {
         when (activeConfig.sensorType) {
             SensorType.GSR_PLUS -> gsrId = activeConfig.btRadioId
             SensorType.EXG      -> exgId = activeConfig.btRadioId
-            SensorType.IMU      -> imuId = activeConfig.btRadioId
-            SensorType.EMG      -> emgId = activeConfig.btRadioId
-            SensorType.CUSTOM   -> { customId = activeConfig.btRadioId; customName = activeConfig.customName }
+            SensorType.IMU           -> imuId     = activeConfig.btRadioId
+            SensorType.EMG           -> emgId     = activeConfig.btRadioId
+            SensorType.EBIO          -> ebioId    = activeConfig.btRadioId
+            SensorType.BRIDGE_AMP    -> bridgeId  = activeConfig.btRadioId
+            SensorType.IMU_200G      -> imu200gId = activeConfig.btRadioId
+            SensorType.PROTO3_DELUXE -> proto3dId = activeConfig.btRadioId
+            SensorType.CUSTOM        -> { customId = activeConfig.btRadioId; customName = activeConfig.customName }
         }
     }
 
@@ -116,6 +128,46 @@ fun SettingsScreen(
                     onChange = { emgId = it.uppercase().take(8) },
                     hint = "Default: A077 (same hardware as EXG)",
                     onSave = { viewModel.updateBtRadioId(SensorType.EMG, emgId) }
+                )
+            }
+
+            // Ebio settings
+            SettingsGroup(title = "Ebio Unit (SR59)", accentColor = androidx.compose.ui.graphics.Color(0xFFE07B39)) {
+                SettingsTextField(
+                    label = "BT Radio ID", value = ebioId,
+                    onChange = { ebioId = it.uppercase().take(8) },
+                    hint = "Default: A078",
+                    onSave = { viewModel.updateBtRadioId(SensorType.EBIO, ebioId) }
+                )
+            }
+
+            // Bridge Amplifier+ settings
+            SettingsGroup(title = "Bridge Amplifier+ (SR37)", accentColor = androidx.compose.ui.graphics.Color(0xFFAF8143)) {
+                SettingsTextField(
+                    label = "BT Radio ID", value = bridgeId,
+                    onChange = { bridgeId = it.uppercase().take(8) },
+                    hint = "Default: A079",
+                    onSave = { viewModel.updateBtRadioId(SensorType.BRIDGE_AMP, bridgeId) }
+                )
+            }
+
+            // 200g IMU settings
+            SettingsGroup(title = "200g IMU (SR31-200G)", accentColor = androidx.compose.ui.graphics.Color(0xFFE04040)) {
+                SettingsTextField(
+                    label = "BT Radio ID", value = imu200gId,
+                    onChange = { imu200gId = it.uppercase().take(8) },
+                    hint = "Default: A081",
+                    onSave = { viewModel.updateBtRadioId(SensorType.IMU_200G, imu200gId) }
+                )
+            }
+
+            // PROTO3 Deluxe settings
+            SettingsGroup(title = "PROTO3 Deluxe (SR50)", accentColor = androidx.compose.ui.graphics.Color(0xFF7B43AF)) {
+                SettingsTextField(
+                    label = "BT Radio ID", value = proto3dId,
+                    onChange = { proto3dId = it.uppercase().take(8) },
+                    hint = "Default: A082",
+                    onSave = { viewModel.updateBtRadioId(SensorType.PROTO3_DELUXE, proto3dId) }
                 )
             }
 
