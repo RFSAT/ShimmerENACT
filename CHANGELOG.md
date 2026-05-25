@@ -2,6 +2,79 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.5
+
+### Changed
+- **Build toolchain upgraded — Google Play API 35 compliance** —
+  The previous toolchain (AGP 8.1.4 / Kotlin 1.9.20) produced the warning
+  *"We recommend using a newer Android Gradle plugin to use compileSdk = 35"*
+  on every CI run, and did not meet Google Play's requirement for a fully
+  supported compileSdk 35 build chain.
+
+  Updated components:
+
+  | Component | Old | New |
+  |-----------|-----|-----|
+  | Android Gradle Plugin (AGP) | 8.1.4 | **8.9.0** |
+  | Kotlin | 1.9.20 | **2.1.10** |
+  | Gradle wrapper | 8.2 | **8.11.1** |
+  | Compose BOM | 2023.10.01 | **2025.04.01** |
+  | `jvmTarget` / Java compatibility | 1.8 | **17** |
+  | `androidx.core:core-ktx` | 1.12.0 | 1.15.0 |
+  | `androidx.appcompat:appcompat` | 1.6.1 | 1.7.0 |
+  | `com.google.android.material` | 1.11.0 | 1.12.0 |
+  | `androidx.lifecycle:*` | 2.7.0 | 2.8.7 |
+  | `androidx.activity:activity-compose` | 1.8.2 | 1.10.1 |
+  | `androidx.navigation:navigation-compose` | 2.7.5 | 2.8.9 |
+  | `kotlinx-coroutines-android` | 1.7.3 | 1.9.0 |
+  | `androidx.datastore:datastore-preferences` | 1.0.0 | 1.1.3 |
+  | `accompanist-permissions` | 0.33.2-alpha | 0.37.0 |
+  | `androidx.test.ext:junit` | 1.1.5 | 1.2.1 |
+  | `androidx.test.espresso:espresso-core` | 3.5.1 | 3.6.1 |
+
+  **Compose compiler** — with Kotlin 2.0+, the Compose compiler ships as
+  part of the Kotlin toolchain via the `org.jetbrains.kotlin.plugin.compose`
+  Gradle plugin (applied in both root `build.gradle` and `app/build.gradle`).
+  The `composeOptions { kotlinCompilerExtensionVersion }` block is removed;
+  it is no longer used or needed.
+
+  The `compileSdk` and `targetSdk` remain at **35** — they were already
+  correct; the issue was the AGP version not officially supporting them.
+
+## v3.1.4
+
+### Changed
+- **Storage permissions reduced to comply with Google Play policy** —
+  `MANAGE_EXTERNAL_STORAGE` (all-files access) and `READ_EXTERNAL_STORAGE` are
+  removed from `AndroidManifest.xml`. `WRITE_EXTERNAL_STORAGE` is retained but
+  now scoped to `maxSdkVersion="28"` (Android 9 and below only) where it is
+  still required by the OS.
+
+  No functionality is lost. The recording save path in `RecordingRepository`
+  is changed from `Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)`
+  (a public directory requiring broad storage access) to
+  `context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)` (an
+  app-specific external directory requiring **no permission** on API 29+).
+
+  Files are written to:
+  `Android/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/`
+
+  They remain fully accessible in any Android file manager and can be shared via
+  the existing share sheet. The file provider configuration in `AndroidManifest.xml`
+  and `file_paths.xml` continues to cover this path.
+
+  | API level | Android version | Permission now required |
+  |-----------|----------------|------------------------|
+  | ≤ 28 | Android 9 | `WRITE_EXTERNAL_STORAGE` (scoped, Play-approved) |
+  | 29–32 | Android 10–12 | **None** |
+  | 33+ | Android 13+ | **None** |
+
+- **`RecordingsScreen` simplified** — all storage permission state management,
+  the `ON_RESUME` lifecycle observer, and the permission banner UI are removed.
+  The screen now unconditionally loads sessions on entry via `LaunchedEffect(Unit)`.
+  The accompanist permissions API (`rememberPermissionState`, `ExperimentalPermissionsApi`)
+  is no longer used in this screen.
+
 ## v3.1.3
 
 ### Changed

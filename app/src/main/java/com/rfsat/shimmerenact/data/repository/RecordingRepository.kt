@@ -401,11 +401,14 @@ class RecordingRepository(private val context: Context) {
     }
 
     // ─── Storage location ──────────────────────────────────────────────────────
-    // Downloads/ShimmerENACT — accessible in any file manager.
+    // App-specific external directory — requires no storage permission on API 29+,
+    // and only WRITE_EXTERNAL_STORAGE (legacy, max API 28) on Android 9 and below.
+    // Files live at: Android/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/
+    // They are visible in any file manager and fully shareable via the share sheet.
     private fun getRootDir(): File {
-        val downloads = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_DOWNLOADS)
-        val root = File(downloads, "ShimmerENACT")
+        val base = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+            ?: context.filesDir   // fallback to internal storage if external unavailable
+        val root = File(base, "ShimmerENACT")
         if (!root.exists()) root.mkdirs()
         return root
     }

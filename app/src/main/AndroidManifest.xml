@@ -17,24 +17,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="30" />
 
-    <!-- Storage: write access up to API 28 (scoped storage on 29+) -->
+    <!-- Storage: write access required only on Android 9 (API 28) and below.
+         On API 29+ the app uses getExternalFilesDir() which needs no permission. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <!--
-        READ_EXTERNAL_STORAGE: grants read access to all of external storage on API 29–32.
-        Deprecated on API 33+ but still honoured there if declared without maxSdkVersion.
-        Required so the Files screen can read recording sessions written by previous
-        installs (different applicationId) or by earlier versions of the app.
-    -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <!--
-        MANAGE_EXTERNAL_STORAGE: allows unrestricted access to external storage on API 30+.
-        Used as a fallback on API 33+ where READ_EXTERNAL_STORAGE no longer covers
-        non-media files in public directories such as Downloads.
-        The user is directed to the system Settings page to grant this if needed.
-    -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
 
     <!-- Internet access — required for OpenStreetMap tile loading in RecordingViewerScreen -->
     <uses-permission android:name="android.permission.INTERNET" />

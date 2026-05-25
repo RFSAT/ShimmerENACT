@@ -1,11 +1,5 @@
 package com.rfsat.shimmerenact.ui.screens
 
-import android.Manifest
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -16,9 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -28,9 +19,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 import com.rfsat.shimmerenact.data.repository.RecordingFile
 import com.rfsat.shimmerenact.data.repository.RecordingSession
 import com.rfsat.shimmerenact.ui.theme.*
@@ -39,7 +27,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordingsScreen(
     viewModel: ShimmerViewModel,
@@ -51,56 +39,10 @@ fun RecordingsScreen(
     val context = LocalContext.current
     val dateFmt = remember { SimpleDateFormat("dd MMM yyyy  HH:mm:ss", Locale.US) }
 
-    // ── Storage permission handling ────────────────────────────────────────────
-    // On API 29–32: READ_EXTERNAL_STORAGE grants full read of external storage.
-    // On API 33+:   READ_EXTERNAL_STORAGE is no longer effective for non-media
-    //               files in Downloads; MANAGE_EXTERNAL_STORAGE is required but
-    //               must be granted via the system Settings page.
-    val needsLegacyRead = Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2  // ≤ API 32
-    val needsManage     = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R      // ≥ API 30
-
-    val readPermState = if (needsLegacyRead) {
-        rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
-    } else null
-
-    // hasStorageAccess must be a mutableState so it is recomputed on every
-    // ON_RESUME event. On API 30+, isExternalStorageManager() is the only
-    // reliable way to check the permission, but it returns a snapshot value —
-    // it does not trigger recomposition by itself when the user grants the
-    // permission in the system Settings page and then returns to the app.
-    // Without observing ON_RESUME, the banner stays on screen forever even
-    // after the permission is granted.
-    var hasStorageAccess by remember {
-        mutableStateOf(
-            when {
-                needsLegacyRead -> readPermState?.status?.isGranted == true
-                needsManage     -> Environment.isExternalStorageManager()
-                else            -> true
-            }
-        )
-    }
-
-    // Re-evaluate permission and refresh sessions on every resume.
-    // This catches the return from the system Settings page (API 30+) and
-    // the accompanist permission grant callback (API ≤ 32).
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                val newAccess = when {
-                    needsLegacyRead -> readPermState?.status?.isGranted == true
-                    needsManage     -> Environment.isExternalStorageManager()
-                    else            -> true
-                }
-                hasStorageAccess = newAccess
-                if (newAccess) viewModel.refreshSessions()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
     var deleteTarget by remember { mutableStateOf<RecordingSession?>(null) }
+
+    // Refresh session list whenever the screen enters composition
+    LaunchedEffect(Unit) { viewModel.refreshSessions() }
 
     Scaffold(
         topBar = {
@@ -127,64 +69,6 @@ fun RecordingsScreen(
     ) { padding ->
 
         Column(Modifier.padding(padding).fillMaxSize()) {
-
-        // ── Storage permission banner ──────────────────────────────────────────
-        if (!hasStorageAccess) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = EnactWarning.copy(alpha = 0.12f)),
-                border = BorderStroke(1.dp, EnactWarning.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FolderOff, null,
-                            tint = EnactWarning, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Storage access required",
-                            fontWeight = FontWeight.SemiBold,
-                            color = EnactWarning, fontSize = 13.sp)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        if (needsLegacyRead)
-                            "Grant storage permission to view recordings from previous sessions."
-                        else
-                            "Grant 'All files access' in Settings to view recordings from previous sessions. " +
-                            "New recordings will still appear automatically.",
-                        fontSize = 12.sp,
-                        color = EnactOnSurface.copy(alpha = 0.75f),
-                        lineHeight = 17.sp
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            if (needsLegacyRead) {
-                                readPermState?.launchPermissionRequest()
-                            } else {
-                                // API 30+: open system all-files-access settings page
-                                val intent = Intent(
-                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                    Uri.parse("package:${context.packageName}")
-                                )
-                                context.startActivity(intent)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = EnactWarning),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            if (needsLegacyRead) "Grant Permission" else "Open Settings",
-                            color = EnactDark, fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-        }
 
         if (sessions.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
