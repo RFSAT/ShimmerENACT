@@ -1,5 +1,6 @@
 package com.rfsat.shimmerenact.ui.screens
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*

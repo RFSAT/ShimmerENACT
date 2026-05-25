@@ -2,6 +2,21 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.6
+
+### Fixed
+- **Compile error: `Unresolved reference 'Intent'` (RecordingsScreen.kt lines 105–124)** —
+  `import android.content.Intent` was accidentally removed in v3.1.4 when the
+  storage permission banner and its associated imports were deleted. `Intent` is
+  still used in two places for the share-session and share-file functionality
+  (launching `ACTION_SEND_MULTIPLE` and `ACTION_SEND` via the system share sheet).
+  The import is restored.
+- **Deprecation warning: `android.defaults.buildfeatures.buildconfig=true`** —
+  This global `gradle.properties` flag is deprecated since AGP 9 and will be
+  removed in AGP 10. The setting is now expressed only in `app/build.gradle`
+  via `buildFeatures { buildConfig true }`, which was already present. The global
+  property is commented out in `gradle.properties`.
+
 ## v3.1.5
 
 ### Changed
