@@ -2,6 +2,39 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.10
+
+### Fixed
+
+- **"Live" view — Record button still not visible** — previous attempts (v3.1.8,
+  v3.1.9) moved `RecordingBar` out of `Scaffold.bottomBar` into the Scaffold's
+  content lambda, but due to a stray extra closing brace it ended up inside the
+  Scaffold's implicit `Box` layer rather than inside the `Column`. In Compose,
+  a `Scaffold` content lambda is a `Box` — so `Column` and `RecordingBar` were
+  stacked on top of each other at (0,0), with `Column(fillMaxSize)` covering
+  `RecordingBar` completely.
+
+  Root cause: the restructuring in v3.1.8 introduced an extra `}` that closed
+  the `Column` one line early, placing `RecordingBar` at `Scaffold` Box depth
+  rather than `Column` depth. Verified by tracing brace depth from `Column(`
+  to `// Signal selector sheet` — `RecordingBar` must be at the same depth
+  as the `Column` open brace (depth 1 in the segment), not at depth 0 (Scaffold
+  Box). Extra brace removed; structure confirmed by full depth trace.
+
+- **"Files" view — recordings made before v3.1.4 not visible** — v3.1.4
+  changed the recording save path from
+  `Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)/ShimmerENACT/`
+  to `context.getExternalFilesDir(DIRECTORY_DOCUMENTS)/ShimmerENACT/`.
+  `listSessions()` only scanned the new path, so all recordings made with
+  earlier versions of the app were invisible in the Files screen.
+
+  Fix: `getLegacyRootDir()` added to `RecordingRepository`. `listSessions()`
+  now concatenates entries from both the current path and the legacy
+  `Downloads/ShimmerENACT/` path (if it exists). No files are moved or
+  deleted; old recordings appear alongside new ones seamlessly. If the
+  legacy directory does not exist, `getLegacyRootDir()` returns null and
+  the behaviour is unchanged.
+
 ## v3.1.9
 
 ### Fixed (re-release of v3.1.8 fixes — previous ZIP was not pushed to GitHub)

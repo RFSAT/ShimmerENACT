@@ -147,7 +147,6 @@ fun DashboardScreen(
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            }
         }
 
         // RecordingBar always visible at the bottom of the content area,
@@ -158,6 +157,7 @@ fun DashboardScreen(
             onStart = { showRecordingSetup = true },
             onStop = viewModel::stopRecording
         )
+        }
     }
 
     // Signal selector sheet

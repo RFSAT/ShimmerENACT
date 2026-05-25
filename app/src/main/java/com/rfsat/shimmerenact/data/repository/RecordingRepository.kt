@@ -213,10 +213,17 @@ class RecordingRepository(private val context: Context) {
 
         AppLog.d("REC", "Scanning: ${root.absolutePath}")
 
-        val allEntries = root.listFiles()
-        if (allEntries == null) {
+        // Also scan the legacy Downloads/ShimmerENACT/ path used before v3.1.4.
+        // This makes old recordings visible after an update without any migration.
+        val legacyRoot = getLegacyRootDir()
+        if (legacyRoot != null) {
+            AppLog.d("REC", "Also scanning legacy: ${legacyRoot.absolutePath}")
+        }
+
+        val allEntries = (root.listFiles()?.toList() ?: emptyList()) +
+            (legacyRoot?.listFiles()?.toList() ?: emptyList())
+        if (allEntries.isEmpty() && root.listFiles() == null) {
             AppLog.w("REC", "listSessions: listFiles() returned null (no permission?)")
-            return@withContext emptyList()
         }
 
         val sessionDirs  = allEntries.filter { it.isDirectory }
@@ -411,6 +418,16 @@ class RecordingRepository(private val context: Context) {
         val root = File(base, "ShimmerENACT")
         if (!root.exists()) root.mkdirs()
         return root
+    }
+
+    // Legacy path used before v3.1.4 — recordings were written to public Downloads.
+    // Returns null if external storage is unavailable.
+    private fun getLegacyRootDir(): File? {
+        val downloads = try {
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        } catch (_: Exception) { return null }
+        val legacy = File(downloads, "ShimmerENACT")
+        return if (legacy.exists() && legacy.isDirectory) legacy else null
     }
 }
 
