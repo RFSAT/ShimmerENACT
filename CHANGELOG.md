@@ -2,6 +2,14 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.13
+
+### Fixed
+- **Compile error: `Unresolved reference 'FontWeight'` (SettingsScreen.kt lines 216, 238, 267)** —
+  The `import androidx.compose.ui.text.font.FontWeight` line was accidentally
+  replaced (not supplemented) when `import androidx.compose.ui.platform.LocalContext`
+  was inserted in v3.1.12. Both imports are now present.
+
 ## v3.1.12
 
 ### Fixed
