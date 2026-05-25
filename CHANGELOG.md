@@ -2,6 +2,30 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.9
+
+### Fixed (re-release of v3.1.8 fixes — previous ZIP was not pushed to GitHub)
+
+Both issues were fixed in v3.1.8 but the symptoms persisted because the corrected
+ZIP was not committed to the repository before the next CI run. v3.1.9 is identical
+to v3.1.8 in source code; it carries a version bump to ensure CI picks up the correct
+sources.
+
+For the full description of root causes and fixes see v3.1.8 below.
+
+Summary:
+- **"Live" view — Record button hidden**: `RecordingBar` was in a nested
+  `Scaffold.bottomBar` rendered beneath the outer `NavigationBar`. Moved into
+  content `Column` with `LazyColumn` taking `weight(1f)` (fixed in v3.1.8).
+- **"Live" view — `navigationBarsPadding()` removed from `RecordingBar`**:
+  after moving `RecordingBar` out of `Scaffold.bottomBar` the
+  `.navigationBarsPadding()` modifier on its `Row` added spurious extra bottom
+  padding that could clip or partially obscure the Record button on some devices.
+- **"Files" view — no recordings visible**: `ON_RESUME` lifecycle observer
+  removed in v3.1.4 was not replaced correctly; `LaunchedEffect(Unit)` only fires
+  once on first composition. `DisposableEffect`/`LifecycleEventObserver` restored
+  so sessions are refreshed on every navigation to the Files screen (fixed in v3.1.8).
+
 ## v3.1.8
 
 ### Fixed
