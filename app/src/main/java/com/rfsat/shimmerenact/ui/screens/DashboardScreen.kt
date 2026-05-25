@@ -108,22 +108,19 @@ fun DashboardScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = EnactDarkMid)
             )
         },
-        bottomBar = {
-            RecordingBar(
-                recordingState = recordingState,
-                elapsedSec = elapsedSec,
-                onStart = { showRecordingSetup = true },
-                onStop = viewModel::stopRecording
-            )
-        },
         containerColor = EnactDark
     ) { padding ->
 
-        LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        // RecordingBar is placed inside the content column (not in Scaffold.bottomBar)
+        // because an outer Scaffold in MainActivity already owns bottomBar insets.
+        // Placing RecordingBar in a nested Scaffold.bottomBar renders it behind the
+        // outer NavigationBar, making it invisible.
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
 
             // Live chart
             if (showChart && uiState.recentSamples.isNotEmpty()) {
@@ -150,7 +147,17 @@ fun DashboardScreen(
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
+            }
         }
+
+        // RecordingBar always visible at the bottom of the content area,
+        // above the outer NavigationBar.
+        RecordingBar(
+            recordingState = recordingState,
+            elapsedSec = elapsedSec,
+            onStart = { showRecordingSetup = true },
+            onStop = viewModel::stopRecording
+        )
     }
 
     // Signal selector sheet

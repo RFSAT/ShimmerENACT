@@ -2,6 +2,38 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.8
+
+### Fixed
+- **Recording button not visible in Live view** —
+  `RecordingBar` was placed in the `bottomBar` of an inner `Scaffold` inside
+  `DashboardScreen`. `MainActivity` already owns an outer `Scaffold` with a
+  `NavigationBar` in its `bottomBar`. Android renders nested `Scaffold.bottomBar`
+  content at the same Z-level as the outer bar, so `RecordingBar` was drawn but
+  completely hidden behind the global navigation bar.
+
+  Fix: `RecordingBar` is moved from `Scaffold.bottomBar` into the `Scaffold`'s
+  content area. The content is restructured as a `Column(fillMaxSize)` with the
+  `LazyColumn` taking `Modifier.weight(1f)` to fill all available space, and
+  `RecordingBar` placed below it — always visible at the bottom of the content
+  area, above the outer `NavigationBar`.
+
+- **Recordings not visible in Files view after recording** —
+  In v3.1.4 the storage permission banner and its `ON_RESUME` lifecycle observer
+  were removed. The observer was also calling `viewModel.refreshSessions()` on
+  every resume, which ensured the session list was refreshed each time the user
+  navigated to the Files screen. It was replaced with `LaunchedEffect(Unit)`,
+  which only fires once when the composable first enters composition.
+
+  As a result, if the user opened Files before recording and then recorded new
+  sessions, navigating back to Files showed the stale (empty) session list because
+  `LaunchedEffect(Unit)` did not re-fire on subsequent navigations.
+
+  Fix: the `ON_RESUME` `DisposableEffect`/`LifecycleEventObserver` pattern is
+  restored in `RecordingsScreen`. On every `ON_RESUME` event (which fires each
+  time the user navigates to or back to the Files screen) the session list is
+  refreshed from the filesystem. No storage permission logic is re-introduced.
+
 ## v3.1.7
 
 ### Fixed

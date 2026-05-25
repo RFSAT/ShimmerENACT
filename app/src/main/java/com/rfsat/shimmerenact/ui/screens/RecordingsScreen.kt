@@ -1,6 +1,9 @@
 package com.rfsat.shimmerenact.ui.screens
 
 import android.content.Intent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -45,8 +48,17 @@ fun RecordingsScreen(
 
     var deleteTarget by remember { mutableStateOf<RecordingSession?>(null) }
 
-    // Refresh session list whenever the screen enters composition
-    LaunchedEffect(Unit) { viewModel.refreshSessions() }
+    // Refresh sessions every time the screen resumes (including navigation back from
+    // the viewer, or after recording completes). LaunchedEffect(Unit) alone only fires
+    // on first composition; the ON_RESUME observer catches subsequent navigations.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshSessions()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold(
         topBar = {
