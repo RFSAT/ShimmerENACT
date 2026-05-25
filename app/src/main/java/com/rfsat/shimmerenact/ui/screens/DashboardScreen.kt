@@ -532,6 +532,7 @@ fun RecordingSetupSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp)
         ) {
@@ -613,7 +614,7 @@ fun RecordingSetupSheet(
                         )
                         if (decimFactor > 1) {
                             Text(
-                                "÷$decimFactor",
+                                "1:$decimFactor",
                                 fontSize = 9.sp,
                                 color = EnactWarning.copy(alpha = if (isSelected) 0.8f else 0.3f)
                             )

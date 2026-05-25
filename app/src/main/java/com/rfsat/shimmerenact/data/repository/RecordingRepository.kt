@@ -387,19 +387,25 @@ class RecordingRepository(private val context: Context) {
     // ─── Delete session directory ─────────────────────────────────────────────
     suspend fun deleteSession(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         if (sessionId == "legacy") {
-            // Delete all bare CSV files in root
-            val root = getRootDir()
+            // Delete all bare CSV files in both current and legacy roots
             var ok = true
-            root.listFiles { f -> f.isFile && f.extension == "csv" }?.forEach { f ->
-                if (!f.delete()) ok = false
+            listOf(getRootDir(), getLegacyRootDir()).filterNotNull().forEach { root ->
+                root.listFiles { f -> f.isFile && f.extension == "csv" }?.forEach { f ->
+                    if (!f.delete()) ok = false
+                }
             }
             return@withContext ok
         }
-        getRootDir().listFiles { f -> f.isDirectory && f.name == sessionId }
-            ?.firstOrNull()?.deleteRecursively()
-            ?: getRootDir().listFiles { f -> f.isDirectory && f.name.contains(sessionId) }
-                ?.firstOrNull()?.deleteRecursively()
-            ?: false
+        // Search both current and legacy root directories
+        val searchRoots = listOf(getRootDir(), getLegacyRootDir()).filterNotNull()
+        for (root in searchRoots) {
+            val dir = root.listFiles { f -> f.isDirectory && f.name == sessionId }
+                ?.firstOrNull()
+                ?: root.listFiles { f -> f.isDirectory && f.name.contains(sessionId) }
+                    ?.firstOrNull()
+            if (dir != null) return@withContext dir.deleteRecursively()
+        }
+        false
     }
 
     // ─── Delete single file ───────────────────────────────────────────────────
@@ -413,8 +419,13 @@ class RecordingRepository(private val context: Context) {
     // Files live at: Android/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/
     // They are visible in any file manager and fully shareable via the share sheet.
     private fun getRootDir(): File {
+        // Always use external app-specific directory — no filesDir fallback.
+        // A filesDir fallback causes split-brain: startRecording writes to
+        // internal storage while listSessions scans external (fresh, empty).
+        // getExternalFilesDir() is null only if external storage is physically
+        // removed (rare on modern devices with internal eMMC as primary storage).
         val base = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-            ?: context.filesDir   // fallback to internal storage if external unavailable
+            ?: throw IllegalStateException("External storage unavailable")
         val root = File(base, "ShimmerENACT")
         if (!root.exists()) root.mkdirs()
         return root

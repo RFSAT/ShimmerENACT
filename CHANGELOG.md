@@ -2,6 +2,50 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.11
+
+### Fixed
+
+- **Recording Setup sheet — Start button not reachable** — the `Column` inside
+  `RecordingSetupSheet` was not scrollable. With many signals (e.g. 16 for
+  200g IMU) the list overflowed the sheet height and the Start button was
+  pushed below the visible area with no way to scroll to it. Added
+  `.verticalScroll(rememberScrollState())` to the sheet Column.
+
+- **"÷25" displayed as "+25" next to Battery** — the division-ratio badge showed
+  U+00F7 (÷) as the divider symbol. This character is absent from several
+  Android system font variants, causing the fallback glyph to appear as "+"
+  on some devices. Replaced with `1:N` ratio notation (e.g. `1:25`) which
+  uses only ASCII digits and a colon, rendering correctly on all fonts.
+
+- **Session folders show zero files; delete and share do nothing** — root
+  cause: `getRootDir()` had a silent fallback to `context.filesDir` (internal
+  storage) when `getExternalFilesDir()` returned null. This caused a
+  split-brain condition:
+
+  - `startRecording()` called `getRootDir()` → `filesDir` → wrote CSV files
+    to **internal** storage.
+  - `listSessions()` called `getRootDir()` → `getExternalFilesDir()` →
+    created a fresh empty directory on **external** storage, found that
+    directory, and reported it with zero CSV files.
+  - `deleteSession()` searched only `getRootDir()` (external), found the
+    empty directory, deleted it (or returned false) — the actual CSV files
+    in internal storage were never touched.
+  - `FileProvider` shared the wrong path or an empty file list.
+
+  Fix: the `filesDir` fallback is removed from `getRootDir()`. If
+  `getExternalFilesDir()` returns null (external storage physically absent
+  — rare on devices with internal eMMC), the method now throws
+  `IllegalStateException` immediately, making the failure visible in the
+  Log screen rather than silently splitting the data across two locations.
+  On all modern Android devices `getExternalFilesDir()` reliably returns a
+  valid path.
+
+- **Delete session does not find recordings from legacy path** —
+  `deleteSession()` only searched `getRootDir()`. Sessions found via
+  `getLegacyRootDir()` (old `Downloads/ShimmerENACT/` path) could not be
+  deleted. Fixed by searching both roots in order.
+
 ## v3.1.10
 
 ### Fixed
