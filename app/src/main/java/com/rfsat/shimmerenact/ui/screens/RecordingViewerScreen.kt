@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -284,7 +285,7 @@ fun RecordingViewerScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = EnactGreen)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = EnactGreen)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = EnactDarkMid)
@@ -578,7 +579,7 @@ fun RecordingViewerScreen(
 
                     // ── Map ────────────────────────────────────────────────────
                     if (hasGps) {
-                        Divider(color = EnactDarkMid, thickness = 1.dp)
+                        HorizontalDivider(color = EnactDarkMid, thickness = 1.dp)
                         Row(
                             modifier = Modifier.fillMaxWidth().background(EnactDarkMid)
                                 .padding(horizontal = 12.dp, vertical = 4.dp),

@@ -2,6 +2,29 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.7
+
+### Fixed
+- **Lint error: `CoarseFineLocation` — `ACCESS_FINE_LOCATION` without `ACCESS_COARSE_LOCATION`
+  on API 31+** — `ACCESS_COARSE_LOCATION` had `android:maxSdkVersion="30"`, so on Android
+  12+ (API 31+) it was absent from the effective permission set while `ACCESS_FINE_LOCATION`
+  was not capped. Android 12 requires both to be declared together so the user can choose
+  to grant only coarse location. The `maxSdkVersion` cap is removed; both permissions are
+  now declared unconditionally. This was the lone lint *error* that blocked the CI build
+  even though the APK and AAB artifacts had already been produced.
+
+### Changed (lint warnings resolved)
+- **`Icons.Filled.ArrowBack` → `Icons.AutoMirrored.Filled.ArrowBack`** in all seven
+  screens that use a back button (`AboutScreen`, `ConnectScreen`, `LogScreen`,
+  `RecordingViewerScreen`, `RecordingsScreen`, `SamplingRateScreen`, `SettingsScreen`).
+  The `AutoMirrored` variant mirrors the icon in right-to-left layouts as required by
+  Material Design guidelines. The matching `import` line is added to each file.
+- **`Icons.Filled.MultilineChart` and `Icons.Filled.ShowChart` →
+  `Icons.AutoMirrored.Filled.*`** in `RecordingsScreen`.
+- **`Divider` → `HorizontalDivider`** in `RecordingViewerScreen`, `RecordingsScreen`,
+  and `SamplingRateScreen`. `Divider` was renamed to `HorizontalDivider` in
+  Material3 1.2.0; the old name still compiles but produces a deprecation warning.
+
 ## v3.1.6
 
 ### Fixed

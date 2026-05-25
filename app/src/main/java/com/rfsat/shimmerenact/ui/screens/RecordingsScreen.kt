@@ -8,6 +8,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MultilineChart
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -60,7 +63,7 @@ fun RecordingsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = EnactGreen)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = EnactGreen)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = EnactDarkMid)
@@ -218,7 +221,7 @@ fun SessionCard(
                 // View all signals button (only when session has 2+ signal files)
                 if (session.files.size >= 2) {
                     IconButton(onClick = { onViewSession(session) }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MultilineChart, "View all signals", tint = EnactGreen,
+                        Icon(Icons.AutoMirrored.Filled.MultilineChart, "View all signals", tint = EnactGreen,
                             modifier = Modifier.size(18.dp))
                     }
                 }
@@ -242,7 +245,7 @@ fun SessionCard(
             // Expanded file list
             AnimatedVisibility(visible = expanded) {
                 Column {
-                    Divider(color = EnactSurfaceVar)
+                    HorizontalDivider(color = EnactSurfaceVar)
                     session.files.forEach { rf ->
                         FileRow(
                             file = rf,
@@ -250,7 +253,7 @@ fun SessionCard(
                             onShare = { onShareFile(rf) }
                         )
                         if (rf != session.files.last()) {
-                            Divider(
+                            HorizontalDivider(
                                 color = EnactSurfaceVar.copy(alpha = 0.4f),
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )
@@ -298,7 +301,7 @@ fun FileRow(file: RecordingFile, onView: () -> Unit = {}, onShare: () -> Unit) {
             }
         }
         IconButton(onClick = onView, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.ShowChart, "View graph", tint = EnactGreen.copy(alpha = 0.7f),
+            Icon(Icons.AutoMirrored.Filled.ShowChart, "View graph", tint = EnactGreen.copy(alpha = 0.7f),
                 modifier = Modifier.size(16.dp))
         }
         IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {

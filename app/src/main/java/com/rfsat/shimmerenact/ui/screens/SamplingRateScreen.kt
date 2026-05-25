@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,7 +65,7 @@ fun SamplingRateScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = EnactGreen)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = EnactGreen)
                     }
                 },
                 actions = {
@@ -311,7 +312,7 @@ fun SignalGroupCard(
 
             AnimatedVisibility(visible = expanded) {
                 Column {
-                    Divider(color = EnactSurfaceVar)
+                    HorizontalDivider(color = EnactSurfaceVar)
                     signals.forEach { signal ->
                         SignalRateRow(
                             signal = signal,
@@ -320,7 +321,7 @@ fun SignalGroupCard(
                             onRateChange = { hz -> onSignalRateChange(signal.key, hz) }
                         )
                         if (signal != signals.last()) {
-                            Divider(
+                            HorizontalDivider(
                                 color = EnactSurfaceVar.copy(alpha = 0.4f),
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )

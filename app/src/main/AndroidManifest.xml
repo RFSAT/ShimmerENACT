@@ -11,11 +11,12 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
 
-    <!-- Location (required for BT scan on Android 11 and below) -->
-    <!-- Fine location: no maxSdkVersion cap — required for GPS during recording on all API levels -->
+    <!-- Location permissions.
+         On Android 12+ (API 31+) both FINE and COARSE must be declared together;
+         the user may choose to grant only COARSE. The app can function with COARSE
+         for Bluetooth scanning; FINE is used for GPS tagging during recording. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!-- Storage: write access required only on Android 9 (API 28) and below.
          On API 29+ the app uses getExternalFilesDir() which needs no permission. -->
