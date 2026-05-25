@@ -12,7 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rfsat.shimmerenact.data.models.SensorType
@@ -26,7 +26,10 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onSamplingRate: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val activeConfig by viewModel.activeConfig.collectAsState()
+    // Build the storage path dynamically so it stays correct regardless of applicationId
+    val storagePath = "Android/data/${context.packageName}/files/Documents/ShimmerENACT/"
 
     var gsrId    by remember { mutableStateOf("") }
     var exgId    by remember { mutableStateOf("") }
@@ -236,7 +239,7 @@ fun SettingsScreen(
                             color = EnactOnSurface, fontSize = 14.sp)
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "CSV files are saved to:\nAndroid/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/\n\n" +
+                            "CSV files are saved to:\n$storagePath\n\n" +
                             "Access via Files app, Android/data, or share directly from the Recordings screen.",
                             fontSize = 12.sp,
                             color = EnactOnSurfaceDim,

@@ -2,6 +2,38 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.12
+
+### Fixed
+- **Settings screen shows wrong storage path** — the "Recording storage" info card
+  displayed the hardcoded string
+  `Android/data/com.rfsat.shimmerenact/files/Documents/ShimmerENACT/` (the
+  Kotlin *namespace*), while recordings are actually written to
+  `Android/data/com.ShimmerENACT/files/Documents/ShimmerENACT/` (the
+  *applicationId* that `getExternalFilesDir()` uses). The path is now built
+  dynamically from `context.packageName` so it is always accurate regardless
+  of which identifier is set as `applicationId` in `build.gradle`.
+
+### Notes
+- **Google Play storage permission compliance** — the current permission set
+  contains no `MANAGE_EXTERNAL_STORAGE` and no `READ_EXTERNAL_STORAGE`. Both
+  were removed in v3.1.4 when the recording path was moved from the public
+  `Downloads/` directory to the app-specific
+  `getExternalFilesDir(DIRECTORY_DOCUMENTS)` path. The only storage permission
+  remaining is `WRITE_EXTERNAL_STORAGE` scoped to `maxSdkVersion="28"` for
+  Android 9 and below. This is fully compliant with Google Play policy; no
+  "All files access" justification is required or requested.
+
+  Legacy sessions in `Downloads/ShimmerENACT/` (recorded with versions prior
+  to v3.1.4) are visible in the Files screen via a best-effort scan added in
+  v3.1.10 (`getLegacyRootDir()`). No additional permission is required for this
+  scan on Android 9 and below (covered by the legacy `WRITE_EXTERNAL_STORAGE`);
+  on Android 10–32 the files may not be readable if the app no longer holds
+  `READ_EXTERNAL_STORAGE`, but they were recorded by the same app so typically
+  remain accessible. On Android 13+ the legacy path is generally inaccessible
+  without `READ_EXTERNAL_STORAGE`; in that case the legacy scan simply returns
+  nothing and no error is shown.
+
 ## v3.1.11
 
 ### Fixed
