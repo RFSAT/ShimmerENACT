@@ -2,6 +2,14 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.15
+
+### Changed
+- **App icon — increased green border around WiFi symbol** — the white WiFi
+  signal graphic is scaled down to 72 % of the icon canvas (from 100 %),
+  adding uniform green padding of 14 % of the icon width on each side. All
+  15 mipmap PNG assets regenerated at mdpi / hdpi / xhdpi / xxhdpi / xxxhdpi.
+
 ## v3.1.14
 
 ### Changed
