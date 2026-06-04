@@ -2,6 +2,28 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.14
+
+### Changed
+- **Application icon updated** — the launcher icon is replaced with the new
+  ShimmerENACT WiFi-signal icon (dark green background `#014411`, white
+  signal arc graphic). PNG mipmaps generated at all five standard Android
+  densities:
+
+  | Density | Launcher icon | Adaptive foreground |
+  |---------|--------------|---------------------|
+  | mdpi    | 48 × 48 px   | 108 × 108 px        |
+  | hdpi    | 72 × 72 px   | 162 × 162 px        |
+  | xhdpi   | 96 × 96 px   | 216 × 216 px        |
+  | xxhdpi  | 144 × 144 px | 324 × 324 px        |
+  | xxxhdpi | 192 × 192 px | 432 × 432 px        |
+
+  The adaptive icon XML (`mipmap-anydpi-v26/ic_launcher.xml` and
+  `ic_launcher_round.xml`) now references `@mipmap/ic_launcher_foreground`
+  (PNG) instead of the previous `@drawable/ic_launcher_foreground` (vector).
+  The `ic_launcher_background` colour in `colors.xml` is updated to `#014411`
+  to match the icon background exactly.
+
 ## v3.1.13
 
 ### Fixed
