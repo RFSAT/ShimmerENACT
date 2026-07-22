@@ -2,6 +2,39 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.2.0
+
+### Added
+- **Foreground recording service (`RecordingService`)** — recording sessions now
+  run under a foreground service with the `connectedDevice` foreground service
+  type, keeping long acquisitions alive when the app is backgrounded or the
+  screen is locked. The service starts automatically when recording begins and
+  stops when recording ends. Declared with `FOREGROUND_SERVICE` and
+  `FOREGROUND_SERVICE_CONNECTED_DEVICE` permissions per Android 14+/16 policy.
+- **Live progress notification** — an ongoing notification shows elapsed
+  recording time (self-ticking chronometer) and rows written / file count
+  (refreshed every 5 seconds by the ViewModel). On Android 16 (API 36+) the
+  notification uses the new progress-centric `Notification.ProgressStyle` in
+  indeterminate mode; on older versions a standard low-importance chronometer
+  notification is used. Tapping the notification returns to the app.
+- **Notification runtime permission flow** — on Android 13+ (API 33+),
+  `POST_NOTIFICATIONS` is requested when the user first taps Record. Recording
+  proceeds regardless of the outcome; the notification is a convenience, not
+  a gate.
+- **Predictive back gesture** — `android:enableOnBackInvokedCallback="true"`
+  enables the system predictive-back animation for the whole app (default
+  behaviour under targetSdk 36, now explicit).
+- **Edge-to-edge display** — `enableEdgeToEdge()` is called in `MainActivity`,
+  matching the Android 16 requirement that removes the edge-to-edge opt-out
+  for apps targeting API 36. Existing Scaffold/insets handling covers the
+  status and navigation bar areas.
+
+### Notes
+- Deferred: adaptive two-pane tablet layout for the Dashboard (signals beside
+  chart on sw ≥ 600dp) and Health Connect export of recorded physiological
+  metrics — both identified as candidate Android 16-era enhancements for a
+  future release.
+
 ## v3.1.16
 
 ### Changed

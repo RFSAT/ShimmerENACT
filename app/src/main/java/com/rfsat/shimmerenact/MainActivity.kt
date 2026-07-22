@@ -34,6 +34,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Android 16 (targetSdk 36) removes the edge-to-edge opt-out; enable it
+        // explicitly so insets are handled consistently on all API levels.
+        androidx.activity.enableEdgeToEdge()
 
         setContent {
             ShimmerENACTTheme {

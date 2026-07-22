@@ -1,6 +1,11 @@
 package com.rfsat.shimmerenact.ui.screens
 
+import android.Manifest
 import android.graphics.Color as AndroidColor
+import android.os.Build
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -32,7 +37,7 @@ import com.rfsat.shimmerenact.viewmodel.ShimmerViewModel
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun DashboardScreen(
     viewModel: ShimmerViewModel,
@@ -61,6 +66,11 @@ fun DashboardScreen(
     var showSignalSelector by remember { mutableStateOf(false) }
     var showChart by remember { mutableStateOf(true) }
     var showRecordingSetup by remember { mutableStateOf(false) }
+    // Notification permission (API 33+) for the recording progress notification.
+    // Requested lazily when the user first taps Record; recording proceeds
+    // regardless of the outcome — the notification is a convenience, not a gate.
+    val notifPermState = if (Build.VERSION.SDK_INT >= 33)
+        rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS) else null
 
     // Recording elapsed time
     var elapsedSec by remember { mutableStateOf(0L) }
@@ -154,7 +164,12 @@ fun DashboardScreen(
         RecordingBar(
             recordingState = recordingState,
             elapsedSec = elapsedSec,
-            onStart = { showRecordingSetup = true },
+            onStart = {
+                if (notifPermState != null && !notifPermState.status.isGranted) {
+                    notifPermState.launchPermissionRequest()
+                }
+                showRecordingSetup = true
+            },
             onStop = viewModel::stopRecording
         )
         }

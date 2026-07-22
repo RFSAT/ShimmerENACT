@@ -409,6 +409,27 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                     fileCount = paths.size,
                     sessionId = recordingRepo.currentSessionId
                 )
+                // Foreground service keeps the session alive when backgrounded and
+                // shows a live progress notification (Android 16 ProgressStyle on
+                // API 36+, chronometer notification on older versions).
+                try {
+                    com.rfsat.shimmerenact.service.RecordingService.start(
+                        context, _recordingState.value.startTimeMs, paths.size)
+                } catch (e: Exception) {
+                    AppLog.w("REC", "Recording service not started: ${e.message}")
+                }
+                // Push row-count updates to the notification every 5 seconds.
+                viewModelScope.launch {
+                    while (_recordingState.value.isRecording) {
+                        kotlinx.coroutines.delay(5000)
+                        if (_recordingState.value.isRecording) {
+                            com.rfsat.shimmerenact.service.RecordingService.update(
+                                context,
+                                recordingRepo.totalSamplesWritten,
+                                _recordingState.value.fileCount)
+                        }
+                    }
+                }
             }.onFailure { e ->
                 AppLog.e("REC", "Failed to start: ${e.message}")
                 _uiState.update { it.copy(errorMessage = "Recording failed: ${e.message}") }
@@ -429,6 +450,9 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
                 AppLog.e("REC", "stopRecording crashed: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
                 locationRepo.stopUpdates()
+                try {
+                    com.rfsat.shimmerenact.service.RecordingService.stop(context)
+                } catch (_: Exception) { }
                 _recordingState.value = RecordingState()
                 try { loadSessions() } catch (e: Exception) {
                     AppLog.e("REC", "loadSessions failed: ${e.message}")
