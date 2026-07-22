@@ -15,8 +15,8 @@ android {
         applicationId "com.ShimmerENACT"
         minSdk 26
         targetSdk 36
-        versionCode 87
-        versionName "3.2.1"
+        versionCode 88
+        versionName "3.2.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

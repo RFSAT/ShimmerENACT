@@ -29,12 +29,6 @@
     <!-- Vibrate for alerts -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Foreground service for background-safe recording sessions (Android 16 policy).
-         The connectedDevice type reflects streaming from a paired Bluetooth sensor. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <!-- Runtime notification permission (API 33+) for the recording progress notification -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- BT classic hardware feature -->
     <uses-feature
@@ -71,12 +65,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- Foreground service keeping recording alive while backgrounded -->
-        <service
-            android:name=".service.RecordingService"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
 
         <!-- File provider for sharing CSVs -->
         <provider

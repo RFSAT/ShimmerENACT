@@ -2,6 +2,30 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.2.2
+
+### Changed
+- **Foreground recording service removed** — the `RecordingService` introduced
+  in v3.2.0 (with `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE`,
+  and `POST_NOTIFICATIONS` permissions) is removed. Although these are
+  install-time permissions with no user-facing prompt, Google Play requires a
+  foreground-service policy declaration in the Play Console for apps targeting
+  Android 14+, adding review burden with limited benefit for the current
+  deployment model where recording is performed with the app in the foreground.
+
+  Removed: `RecordingService.kt`, the manifest `<service>` entry, all three
+  permissions, and the ViewModel/DashboardScreen wiring (notification update
+  loop and the runtime notification permission request).
+
+  Retained from v3.2.0 (no permissions required): predictive back gesture
+  (`enableOnBackInvokedCallback`) and edge-to-edge display (`enableEdgeToEdge()`).
+
+  Operational note: long recordings should keep the app in the foreground
+  (e.g. screen on or app visible). If unattended background recording becomes
+  a requirement for a future measurement campaign, the v3.2.0 implementation
+  can be restored from version history together with its Play Console
+  declaration.
+
 ## v3.2.1
 
 ### Fixed
