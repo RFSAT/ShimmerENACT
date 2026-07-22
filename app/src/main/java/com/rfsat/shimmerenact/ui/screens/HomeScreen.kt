@@ -64,6 +64,11 @@ fun HomeScreen(
                     color = EnactGreen
                 )
                 Text(
+                    "Version ${com.rfsat.shimmerenact.BuildConfig.VERSION_NAME}",
+                    fontSize = 12.sp,
+                    color = EnactOnSurface.copy(alpha = 0.55f)
+                )
+                Text(
                     "by RFSAT Limited",
                     fontSize = 13.sp,
                     color = EnactOnSurface.copy(alpha = 0.7f)

@@ -29,6 +29,7 @@ class PreferencesRepository(private val context: Context) {
         val KEY_LAST_SENSOR     = stringPreferencesKey("last_sensor_type")
         val KEY_LAST_ADDRESS    = stringPreferencesKey("last_bt_address")
         val KEY_CHART_SIGNALS   = stringPreferencesKey("chart_signals")  // comma-separated keys
+        val KEY_HIDE_LOG_TAB    = booleanPreferencesKey("hide_log_tab")
     }
 
     val gsrBtId: Flow<String> = context.dataStore.data
@@ -75,6 +76,10 @@ class PreferencesRepository(private val context: Context) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[KEY_LAST_ADDRESS] ?: "" }
 
+    val hideLogTab: Flow<Boolean> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_HIDE_LOG_TAB] ?: false }
+
     suspend fun saveGsrBtId(id: String) = context.dataStore.edit { it[KEY_GSR_BT_ID] = id }
     suspend fun saveExgBtId(id: String) = context.dataStore.edit { it[KEY_EXG_BT_ID] = id }
     suspend fun saveCustomBtId(id: String) = context.dataStore.edit { it[KEY_CUSTOM_BT_ID] = id }
@@ -88,4 +93,5 @@ class PreferencesRepository(private val context: Context) {
     suspend fun saveSamplingRate(rate: Int) = context.dataStore.edit { it[KEY_SAMPLING_RATE] = rate }
     suspend fun saveLastAddress(addr: String) = context.dataStore.edit { it[KEY_LAST_ADDRESS] = addr }
     suspend fun saveLastSensorType(type: String) = context.dataStore.edit { it[KEY_LAST_SENSOR] = type }
+    suspend fun saveHideLogTab(hide: Boolean) = context.dataStore.edit { it[KEY_HIDE_LOG_TAB] = hide }
 }

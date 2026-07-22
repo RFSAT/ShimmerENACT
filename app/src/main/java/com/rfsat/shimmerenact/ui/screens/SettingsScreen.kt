@@ -29,6 +29,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val activeConfig by viewModel.activeConfig.collectAsState()
+    val hideLogTab by viewModel.hideLogTab.collectAsState()
     // Build the storage path dynamically so it stays correct regardless of applicationId
     val storagePath = "Android/data/${context.packageName}/files/Documents/ShimmerENACT/"
 
@@ -223,6 +224,39 @@ fun SettingsScreen(
                     }
                     Icon(Icons.Default.ChevronRight, null,
                         tint = EnactGreen.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+                }
+            }
+
+            // ── Interface options ────────────────────────────────────────
+            Card(
+                colors = CardDefaults.cardColors(containerColor = EnactSurface),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Terminal, null, tint = EnactGreen.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hide Log tab", fontWeight = FontWeight.SemiBold,
+                            color = EnactOnSurface, fontSize = 14.sp)
+                        Text(
+                            "Removes the Log tab from the navigation bar. Logging continues " +
+                            "in the background and the tab can be restored here at any time.",
+                            fontSize = 12.sp, color = EnactOnSurfaceDim, lineHeight = 16.sp
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = hideLogTab,
+                        onCheckedChange = { viewModel.setHideLogTab(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = EnactGreen,
+                            checkedTrackColor = EnactGreen.copy(alpha = 0.4f)
+                        )
+                    )
                 }
             }
 

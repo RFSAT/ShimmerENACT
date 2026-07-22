@@ -9,10 +9,13 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import android.net.Uri
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -67,6 +70,20 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
 
     val uiState by viewModel.uiState.collectAsState()
     val isConnected = uiState.connectionState == ConnectionState.CONNECTED
+    val recordingState by viewModel.recordingState.collectAsState()
+    val hideLogTab by viewModel.hideLogTab.collectAsState()
+    val context = LocalContext.current
+    var showExitConfirm by remember { mutableStateOf(false) }
+
+    // If the Log tab is hidden while the user is on it, fall back to Sensors.
+    LaunchedEffect(hideLogTab, currentRoute) {
+        if (hideLogTab && currentRoute == Screen.Log.route) {
+            navController.navigate(Screen.Home.route) {
+                popUpTo(0) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
 
     // Bottom nav items (only show when appropriate)
     val showBottomNav = currentRoute in listOf(
@@ -133,7 +150,8 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                             unselectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f)
                         )
                     )
-                    // ── Log tab with error-count badge ──────────────────────
+                    // ── Log tab with error-count badge (hideable in Settings) ──
+                    if (!hideLogTab) {
                     val logEntries by com.rfsat.shimmerenact.data.repository.AppLog.entries.collectAsState()
                     val errorCount = remember(logEntries) {
                         logEntries.count { it.level == com.rfsat.shimmerenact.data.repository.LogLevel.ERROR }
@@ -171,6 +189,7 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                             unselectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f)
                         )
                     )
+                    }   // end if (!hideLogTab)
                     NavigationBarItem(
                         selected = currentRoute == Screen.Settings.route,
                         onClick = { navController.navigate(Screen.Settings.route) {
@@ -183,6 +202,20 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                             selectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactGreen,
                             selectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactGreen,
                             indicatorColor = com.rfsat.shimmerenact.ui.theme.EnactGreen.copy(alpha = 0.15f),
+                            unselectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f),
+                            unselectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f)
+                        )
+                    )
+                    // ── Exit: closes the app (never "selected") ────────────────
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showExitConfirm = true },
+                        icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, null) },
+                        label = { Text("Exit") },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactError,
+                            selectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactError,
+                            indicatorColor = com.rfsat.shimmerenact.ui.theme.EnactError.copy(alpha = 0.15f),
                             unselectedIconColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f),
                             unselectedTextColor = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.4f)
                         )
@@ -301,5 +334,51 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
                 AboutScreen(onBack = { navController.popBackStack() })
             }
         }
+    }
+
+    // ── Exit confirmation ─────────────────────────────────────────────────────
+    // A bottom-bar item is easy to mis-tap, so exiting is always confirmed.
+    // While a recording is in progress, exiting is blocked outright rather than
+    // risking an unflushed CSV file: stopRecording() is asynchronous and would
+    // not complete if the activity finished immediately.
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = {
+                Text(
+                    if (recordingState.isRecording) "Recording in progress" else "Exit ShimmerENACT?",
+                    color = com.rfsat.shimmerenact.ui.theme.EnactOnSurface
+                )
+            },
+            text = {
+                Text(
+                    if (recordingState.isRecording)
+                        "Stop the current recording before exiting, so that all data is written to file."
+                    else
+                        "The sensor will be disconnected and the application closed.",
+                    color = com.rfsat.shimmerenact.ui.theme.EnactOnSurface.copy(alpha = 0.75f)
+                )
+            },
+            confirmButton = {
+                if (!recordingState.isRecording) {
+                    TextButton(onClick = {
+                        showExitConfirm = false
+                        viewModel.disconnect()
+                        (context as? Activity)?.finish()
+                    }) {
+                        Text("Exit", color = com.rfsat.shimmerenact.ui.theme.EnactError)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirm = false }) {
+                    Text(
+                        if (recordingState.isRecording) "OK" else "Cancel",
+                        color = com.rfsat.shimmerenact.ui.theme.EnactGreen
+                    )
+                }
+            },
+            containerColor = com.rfsat.shimmerenact.ui.theme.EnactSurface
+        )
     }
 }

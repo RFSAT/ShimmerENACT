@@ -291,6 +291,15 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
     /** Reload the sessions list — call when the Recordings screen becomes visible. */
     fun refreshSessions() = loadSessions()
 
+    // ─── UI preferences ───────────────────────────────────────────────────────
+    /** When true the Log tab is hidden from the bottom navigation bar. */
+    val hideLogTab: StateFlow<Boolean> = prefsRepo.hideLogTab
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setHideLogTab(hide: Boolean) {
+        viewModelScope.launch { prefsRepo.saveHideLogTab(hide) }
+    }
+
     // ─── Public actions ───────────────────────────────────────────────────────
 
     fun selectSensorType(type: SensorType) {

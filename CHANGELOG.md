@@ -2,6 +2,37 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.3.0
+
+### Added
+- **Exit button in the navigation bar** — a new "Exit" item is placed after
+  "Settings". Because a bottom-bar item is easy to mis-tap, exiting is always
+  confirmed by a dialog. On confirmation the sensor is disconnected and the
+  activity finishes.
+
+  While a recording is in progress the dialog blocks the exit and asks the user
+  to stop the recording first. This is deliberate: `stopRecording()` is
+  asynchronous, and finishing the activity immediately would tear down the
+  ViewModel scope before the CSV buffers were flushed, risking data loss.
+
+- **"Hide Log tab" option in Settings** — a switch in the Settings screen
+  removes the Log tab from the bottom navigation bar. The preference is stored
+  in DataStore (`hide_log_tab`) and therefore persists across restarts.
+  Logging itself is unaffected and continues in the background; the tab can be
+  restored from the same switch at any time. If the tab is hidden while the
+  user is viewing it, the app navigates back to the Sensors tab.
+
+- **Application version on the Sensors tab** — the version name
+  (`BuildConfig.VERSION_NAME`) is displayed directly beneath the "ShimmerENACT"
+  title in the header card, so the running build can be identified without
+  opening the About screen.
+
+### Notes
+- With the Log tab visible the navigation bar now holds six items
+  (Sensors, Live, Files, Log, Settings, Exit). Material 3 guidance recommends
+  three to five; labels remain legible on typical phone widths but are tight on
+  small screens. Hiding the Log tab returns the bar to five items.
+
 ## v3.2.3
 
 ### Changed — Google Play Console suggestions addressed
