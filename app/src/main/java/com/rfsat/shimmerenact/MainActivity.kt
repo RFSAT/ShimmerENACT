@@ -3,6 +3,7 @@ package com.rfsat.shimmerenact
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -36,7 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Android 16 (targetSdk 36) removes the edge-to-edge opt-out; enable it
         // explicitly so insets are handled consistently on all API levels.
-        androidx.activity.enableEdgeToEdge()
+        enableEdgeToEdge()
 
         setContent {
             ShimmerENACTTheme {

@@ -2,6 +2,15 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.2.1
+
+### Fixed
+- **Compile error: `Unresolved reference 'enableEdgeToEdge'` (MainActivity.kt:39)** —
+  `enableEdgeToEdge` is a Kotlin extension function on `ComponentActivity`
+  (package `androidx.activity`); extension functions cannot be invoked via a
+  fully-qualified package path. Added `import androidx.activity.enableEdgeToEdge`
+  and changed the call site to the plain `enableEdgeToEdge()`.
+
 ## v3.2.0
 
 ### Added
