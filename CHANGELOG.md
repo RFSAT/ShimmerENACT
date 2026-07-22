@@ -2,6 +2,28 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.1.16
+
+### Changed
+- **Build toolchain upgraded — Google Play API 36 compliance** — Google Play now
+  requires apps to target Android 16 (API level 36) or higher. Updated:
+
+  | Component | Old | New |
+  |-----------|-----|-----|
+  | Android Gradle Plugin (AGP) | 8.9.0 | **8.10.1** |
+  | `compileSdk` | 35 | **36** |
+  | `targetSdk` | 35 | **36** |
+  | `buildToolsVersion` | 35.0.0 | **36.0.0** |
+  | Compose BOM | 2025.04.01 | **2025.10.00** |
+
+  Kotlin (2.1.10) and Gradle wrapper (8.11.1) are unchanged — both are already
+  within the compatibility range for AGP 8.10.1 (minimum Gradle 8.11.1, JDK 17).
+
+  Compose BOM 2025.10.00 is the latest stable BOM that does not require
+  `compileSdk` 37 or AGP 9. Starting from Compose 1.12.0 (BOM ≈ 2026.x),
+  `compileSdk` 37 and AGP 9 will become mandatory; that upgrade is deferred
+  until Google Play enforces API 37 as the minimum target.
+
 ## v3.1.15
 
 ### Changed
