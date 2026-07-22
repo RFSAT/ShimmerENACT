@@ -2,6 +2,54 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.2.3
+
+### Changed — Google Play Console suggestions addressed
+
+**(1) Edge-to-edge display** — already implemented in v3.2.0 via `enableEdgeToEdge()`;
+the Play report predates that build. Hardened further in this release: the call now
+passes explicit `SystemBarStyle.dark(TRANSPARENT)` for both the status and navigation
+bars. ShimmerENACT is always dark-themed, so this guarantees light (white) system-bar
+icons and adequate contrast regardless of the device light/dark setting, instead of
+relying on the `auto` default. Inset handling is provided by the Compose `Scaffold`
+in `MainActivity` and each screen.
+
+**(2) Deprecated edge-to-edge APIs** — `android:statusBarColor` and
+`android:navigationBarColor` (both deprecated in Android 15 / API 35) are removed from
+`Theme.ShimmerENACT` in `themes.xml`. They were redundant once `enableEdgeToEdge()`
+took over bar styling at runtime.
+
+Note: the obfuscated call sites listed by Play (`b.o.b`, `b.q.b`, `V.v.o`) are inside
+minified AndroidX library code — `androidx.activity`'s own `EdgeToEdge` helper calls
+`setStatusBarColor`/`setNavigationBarColor` for backward compatibility on API < 35, and
+`LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES` is set by the same helper. These are not
+reachable from application code and resolve when the libraries themselves are updated.
+
+**(3) Bitmap downsampling** — not actionable. Both reported call sites are inside the
+third-party osmdroid library (`org.osmdroid.tileprovider.tilesource.BitmapTileSourceBase.getDrawable`),
+not application code. OSM map tiles are fixed 256×256 px images decoded at native
+resolution; applying `inSampleSize` would visibly degrade map quality for no practical
+memory benefit at that tile size. No change made.
+
+**(4) R8 optimisation**
+- Optimised resource shrinking **enabled**: `android.r8.optimizedResourceShrinking=true`
+  added to `gradle.properties`. R8 now shrinks code and resources in a single pass, so
+  resources referenced only from dead code are removed as well. `minifyEnabled`,
+  `shrinkResources`, and `proguard-android-optimize.txt` were already in place, and
+  R8 full mode is active by default (no `android.enableR8.fullMode=false` present).
+- **AGP 8.10.1 → 8.13.0** (the flag requires AGP 8.12+), with the Gradle wrapper
+  raised **8.11.1 → 8.13** to meet AGP 8.13's minimum. JDK 17 and SDK Build Tools
+  are unchanged; AGP 8.13 supports up to API 36.1, comfortably above our targetSdk 36.
+- The AGP 9.0+ part of the suggestion is **deferred**. AGP 9 brings a new DSL,
+  requires Gradle 9.x, and makes optimised resource shrinking the default — the
+  benefit Play is flagging is already obtained here on AGP 8.13 with one property.
+  The migration is scheduled alongside the eventual `compileSdk` 37 move.
+
+### Fixed
+- **Deprecation warning** — `LocalLifecycleOwner` in `RecordingsScreen` now imported
+  from `androidx.lifecycle.compose` instead of the deprecated
+  `androidx.compose.ui.platform` location.
+
 ## v3.2.2
 
 ### Changed

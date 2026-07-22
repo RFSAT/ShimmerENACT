@@ -3,6 +3,7 @@ package com.rfsat.shimmerenact
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,7 +38,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Android 16 (targetSdk 36) removes the edge-to-edge opt-out; enable it
         // explicitly so insets are handled consistently on all API levels.
-        enableEdgeToEdge()
+        // Explicit dark bar styles: the app is always dark-themed, so force light
+        // (white) system-bar icons regardless of the device light/dark setting.
+        enableEdgeToEdge(
+            statusBarStyle     = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
 
         setContent {
             ShimmerENACTTheme {
