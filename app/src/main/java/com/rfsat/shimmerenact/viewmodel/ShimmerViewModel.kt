@@ -300,6 +300,14 @@ class ShimmerViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { prefsRepo.saveHideLogTab(hide) }
     }
 
+    /** When true the status and navigation bars are hidden (immersive mode). */
+    val immersiveMode: StateFlow<Boolean> = prefsRepo.immersiveMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setImmersiveMode(on: Boolean) {
+        viewModelScope.launch { prefsRepo.saveImmersiveMode(on) }
+    }
+
     // ─── Public actions ───────────────────────────────────────────────────────
 
     fun selectSensorType(type: SensorType) {

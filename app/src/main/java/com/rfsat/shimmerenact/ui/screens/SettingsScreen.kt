@@ -30,6 +30,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val activeConfig by viewModel.activeConfig.collectAsState()
     val hideLogTab by viewModel.hideLogTab.collectAsState()
+    val immersiveMode by viewModel.immersiveMode.collectAsState()
     // Build the storage path dynamically so it stays correct regardless of applicationId
     val storagePath = "Android/data/${context.packageName}/files/Documents/ShimmerENACT/"
 
@@ -228,6 +229,39 @@ fun SettingsScreen(
             }
 
             // ── Interface options ────────────────────────────────────────
+            Card(
+                colors = CardDefaults.cardColors(containerColor = EnactSurface),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Fullscreen, null, tint = EnactGreen.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Full screen mode", fontWeight = FontWeight.SemiBold,
+                            color = EnactOnSurface, fontSize = 14.sp)
+                        Text(
+                            "Hides the Android status bar and navigation bar to maximise the " +
+                            "usable area. Swipe from the top or bottom edge to reveal them " +
+                            "temporarily.",
+                            fontSize = 12.sp, color = EnactOnSurfaceDim, lineHeight = 16.sp
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = immersiveMode,
+                        onCheckedChange = { viewModel.setImmersiveMode(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = EnactGreen,
+                            checkedTrackColor = EnactGreen.copy(alpha = 0.4f)
+                        )
+                    )
+                }
+            }
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = EnactSurface),
                 shape = RoundedCornerShape(12.dp)

@@ -2,6 +2,33 @@
 
 RFSAT Limited — ENACT Project (Horizon Europe Grant 101157151)
 
+## v3.4.0
+
+### Added
+- **"Full screen mode" option in Settings** — a switch that hides the Android
+  status bar and navigation bar, giving the application the entire display.
+  The preference is stored in DataStore (`immersive_mode`) and persists across
+  restarts.
+
+  Implementation notes:
+  - Bars are hidden via `WindowInsetsControllerCompat.hide(Type.systemBars())`
+    rather than the deprecated `SYSTEM_UI_FLAG_*` constants, which no longer
+    function reliably on API 30+ and are removed on API 35+.
+  - `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` is set, so a swipe from the top or
+    bottom edge reveals the bars temporarily and they auto-hide again. The
+    device stays fully navigable without leaving the mode.
+  - A window focus listener re-applies the hidden state whenever the window
+    regains focus. Android restores the system bars after dialogs, permission
+    prompts, and app switching; without this the mode would silently lapse.
+  - Turning the switch off calls `show(Type.systemBars())` and the bars return
+    immediately.
+
+  This complements rather than replaces the edge-to-edge handling added in
+  v3.2.0: `enableEdgeToEdge()` still governs how content is laid out behind the
+  bars when they are visible. Because Compose window insets update when the
+  bars are hidden, the `Scaffold` padding collapses automatically and the
+  application content expands to fill the reclaimed space.
+
 ## v3.3.0
 
 ### Added

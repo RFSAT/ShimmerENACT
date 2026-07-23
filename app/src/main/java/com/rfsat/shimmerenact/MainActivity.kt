@@ -15,6 +15,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.app.Activity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import android.net.Uri
@@ -72,8 +76,41 @@ fun ShimmerApp(viewModel: ShimmerViewModel) {
     val isConnected = uiState.connectionState == ConnectionState.CONNECTED
     val recordingState by viewModel.recordingState.collectAsState()
     val hideLogTab by viewModel.hideLogTab.collectAsState()
+    val immersiveMode by viewModel.immersiveMode.collectAsState()
+    val view = LocalView.current
     val context = LocalContext.current
     var showExitConfirm by remember { mutableStateOf(false) }
+
+    // ── True full-screen (immersive) mode ─────────────────────────────────────
+    // Hides the system status bar and navigation bar. BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    // lets the user swipe from an edge to reveal them temporarily, so the device
+    // remains navigable without leaving the mode. Re-applied whenever the window
+    // regains focus, because Android restores the bars after certain system events
+    // (dialogs, permission prompts, app switching).
+    LaunchedEffect(immersiveMode) {
+        val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        if (immersiveMode) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    DisposableEffect(immersiveMode, view) {
+        val window = (view.context as? Activity)?.window
+        val listener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus && immersiveMode && window != null) {
+                val c = WindowCompat.getInsetsController(window, view)
+                c.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                c.hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        view.viewTreeObserver.addOnWindowFocusChangeListener(listener)
+        onDispose { view.viewTreeObserver.removeOnWindowFocusChangeListener(listener) }
+    }
 
     // If the Log tab is hidden while the user is on it, fall back to Sensors.
     LaunchedEffect(hideLogTab, currentRoute) {
